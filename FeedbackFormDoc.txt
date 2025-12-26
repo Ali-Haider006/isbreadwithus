@@ -1,0 +1,37 @@
+Feedback Form Questions - Final List
+Three Anonymous Questions
+Question 1: Overall Rating
+
+Question: "How would you rate this meetup overall?"
+Type: Star rating (1-5 stars)
+Required: Yes
+Labels:
+
+1 star: "Poor"
+2 stars: "Fair"
+3 stars: "Good"
+4 stars: "Very Good"
+5 stars: "Excellent"
+
+
+Question 2: What Did You Enjoy Most?
+
+Question: "What did you enjoy most about the meetup?"
+Type: Multiple choice (single select)
+Required: Yes
+Options:
+
+Book discussion
+Meeting new people
+Venue/Location
+Moderator/Facilitation
+Refreshments/Snacks
+Other
+
+Question 3: Suggestions for Improvement
+
+Question: "Any suggestions for improvement or comments?"
+Type: Long text area
+Required: No (optional)
+Max characters: 1000
+Placeholder: "Share your thoughts, suggestions, or any other feedback..."
