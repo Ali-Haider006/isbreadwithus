@@ -29,8 +29,76 @@ interface User {
 }
 
 // Modal Component
-function RegistrationModal({ registration, onClose }: { registration: Registration, onClose: () => void }) {
+function RegistrationModal({ registration, onClose, onUpdate }: { registration: Registration, onClose: () => void, onUpdate: () => void }) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  
   if (!registration) return null;
+
+  const handleConfirm = async () => {
+    setIsUpdating(true);
+    try {
+      const response = await fetch('/api/registrations/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: registration.id, status: 'confirmed' }),
+      });
+      if (response.ok) {
+        onUpdate();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error confirming registration:', error);
+      alert('Failed to confirm registration');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this registration? This action cannot be undone.')) {
+      return;
+    }
+    
+    setIsUpdating(true);
+    try {
+      const response = await fetch('/api/registrations/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: registration.id }),
+      });
+      if (response.ok) {
+        onUpdate();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error deleting registration:', error);
+      alert('Failed to delete registration');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    setIsUpdating(true);
+    try {
+      const response = await fetch('/api/registrations/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: registration.id, status: newStatus }),
+      });
+      if (response.ok) {
+        onUpdate();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Failed to update status');
+    } finally {
+      setIsUpdating(false);
+      setShowStatusMenu(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -168,10 +236,73 @@ function RegistrationModal({ registration, onClose }: { registration: Registrati
         </div>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4">
+        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 space-y-3">
+          {/* Status Change Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowStatusMenu(!showStatusMenu)}
+              disabled={isUpdating}
+              className="w-full flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>Change Status</span>
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {showStatusMenu && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
+                <button
+                  onClick={() => handleStatusChange('pending')}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Clock className="h-4 w-4 text-pink-600" />
+                  <span className="text-pink-600">Pending</span>
+                </button>
+                <button
+                  onClick={() => handleStatusChange('confirmed')}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <CheckCircle className="h-4 w-4 text-green-800" />
+                  <span className="text-green-800">Confirmed</span>
+                </button>
+                <button
+                  onClick={() => handleStatusChange('rejected')}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <XCircle className="h-4 w-4 text-red-800" />
+                  <span className="text-red-800">Rejected</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleConfirm}
+              disabled={isUpdating || registration.status === 'confirmed'}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <CheckCircle className="h-4 w-4" />
+              {isUpdating ? 'Processing...' : 'Confirm'}
+            </button>
+            
+            <button
+              onClick={handleDelete}
+              disabled={isUpdating}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <XCircle className="h-4 w-4" />
+              {isUpdating ? 'Processing...' : 'Delete'}
+            </button>
+          </div>
+
+          {/* Close Button */}
           <button
             onClick={onClose}
-            className="w-full bg-[#3a4095] text-white py-2 px-4 rounded-lg hover:bg-[#2d3275] transition-colors font-medium"
+            disabled={isUpdating}
+            className="w-full bg-[#3a4095] text-white py-2 px-4 rounded-lg hover:bg-[#2d3275] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Close
           </button>
@@ -192,6 +323,13 @@ export default function DashboardClient({
   feedback: Feedback[] 
 }) {
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleUpdate = () => {
+    setRefreshKey(prev => prev + 1);
+    // Trigger page refresh to get updated data
+    window.location.reload();
+  };
 
   // Calculate stats
   const totalRegistrations = registrations?.length || 0
@@ -479,7 +617,8 @@ export default function DashboardClient({
       {selectedRegistration && (
         <RegistrationModal 
           registration={selectedRegistration} 
-          onClose={() => setSelectedRegistration(null)} 
+          onClose={() => setSelectedRegistration(null)}
+          onUpdate={handleUpdate}
         />
       )}
     </div>
