@@ -5,7 +5,7 @@ export default function SuccessPage() {
         <h1 className="text-2xl font-semibold">Registration Successful 🎉</h1>
         <p className="text-sm text-gray-600">
           Your registration has been received.  
-          You’ll get a confirmation email soon.
+          You’ll get a confirmation by adding you on the whatsapp groups.
         </p>
       </div>
     </main>
