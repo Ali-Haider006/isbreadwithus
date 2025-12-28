@@ -1,0 +1,257 @@
+# IsBreadWithUs Book Club - Master Development Prompt
+
+## Project Overview
+You are helping develop a full-stack web application for **IsBreadWithUs**, a book club community platform. This is a meetup registration and management system for book club members and administrators.
+
+---
+
+## Brand Identity
+- **Name**: IsBreadWithUs
+- **Primary Brand Color**: `#3a4095` (deep purple/blue)
+- **Logo Location**: `public/bookclubLogo.png`
+- **Instagram**: [@isbreadwithus](https://www.instagram.com/isbreadwithus/)
+- **Purpose**: Building a community of passionate readers through regular meetups and discussions
+
+---
+
+## Current Architecture
+
+### Routes Established
+1. **`/register`** - User registration for meetup attendees (ordinary users)
+2. **`/feedback`** - Feedback submission for registered users
+3. **`/sign-in`** - Admin authentication and access portal
+
+### Tech Stack Preferences
+- **Frontend**: React with Tailwind CSS
+- **Design System**: Modern, clean, accessible UI components
+- **Color Scheme**: Primary `#3a4095`, complemented by neutral grays and whites
+- **Icons**: Lucide React library
+- **Responsive**: Mobile-first approach
+
+---
+
+## Design Guidelines
+
+### Visual Style
+- **Aesthetic**: Modern, welcoming, community-focused
+- **Typography**: Clean, readable fonts with clear hierarchy
+- **Spacing**: Generous whitespace for breathing room
+- **Components**: Rounded corners (rounded-lg, rounded-full for buttons)
+- **Effects**: Subtle hover states, smooth transitions
+- **Shadows**: Soft shadows for depth (shadow-md, shadow-lg)
+
+### Color Usage
+- **Primary Actions**: `bg-[#3a4095]` with white text
+- **Hover States**: Slightly darker `#2d3275` or lighter `#5a60b5`
+- **Backgrounds**: `bg-gray-50` for pages, `bg-white` for cards
+- **Text**: `text-gray-700` for body, `text-gray-900` for headings
+- **Accents**: Use primary color for links, icons, and emphasis
+
+### Component Patterns
+- **Buttons**: `rounded-full` with padding `px-6 py-2` or `px-8 py-3`
+- **Cards**: White background with `shadow-md` and `rounded-lg`
+- **Forms**: Clear labels, proper spacing, validation states
+- **Navigation**: Sticky navbar with shadow
+- **Footer**: Multi-column layout with brand consistency
+
+---
+
+## Functional Requirements
+
+### User Features (Ordinary Users)
+- Browse upcoming book club meetups
+- Register for meetups with personal information
+- Submit feedback about events and experiences
+- View book lists and recommendations
+- Access community guidelines and FAQ
+
+### Admin Features
+- Secure authentication via `/sign-in`
+- Manage meetup events (create, edit, delete)
+- View registered attendees
+- Review and respond to feedback
+- Send notifications to members
+- Generate reports on attendance and engagement
+
+### General Features
+- Responsive design (mobile, tablet, desktop)
+- Accessible navigation
+- Social media integration (Instagram)
+- Contact methods (email, social)
+- Loading states and error handling
+- Form validation
+
+---
+
+## Data Models to Consider
+
+### User/Attendee
+- Name, email, phone (optional)
+- Registration date
+- Meetups attended
+- Feedback submitted
+
+### Meetup Event
+- Title, date, time, location
+- Book being discussed
+- Description/agenda
+- Maximum capacity
+- Registration deadline
+- Attendee list
+
+### Feedback
+- User identification
+- Event reference
+- Rating/satisfaction level
+- Comments
+- Submission timestamp
+
+### Book
+- Title, author, genre
+- Discussion date
+- Summary/description
+- Rating/reviews from members
+
+---
+
+## Development Principles
+
+### Code Quality
+- **Clean Code**: Descriptive variable names, commented where necessary
+- **Reusability**: Create reusable components for common UI patterns
+- **State Management**: Use React hooks (useState, useEffect) appropriately
+- **Error Handling**: Graceful error messages and fallbacks
+- **Validation**: Client-side form validation before submission
+
+### Best Practices
+- **Accessibility**: Semantic HTML, ARIA labels, keyboard navigation
+- **Performance**: Optimize images, lazy loading where appropriate
+- **Security**: Sanitize inputs, secure admin routes, protect sensitive data
+- **SEO**: Proper meta tags, descriptive alt text for images
+- **Testing**: Consider edge cases and user error scenarios
+
+### Component Structure
+```
+BookClubApp/
+├── Components/
+│   ├── Layout/
+│   │   ├── Navbar
+│   │   ├── Footer
+│   │   └── Hero
+│   ├── Features/
+│   │   ├── MeetupCard
+│   │   ├── RegistrationForm
+│   │   ├── FeedbackForm
+│   │   └── AdminDashboard
+│   └── UI/
+│       ├── Button
+│       ├── Input
+│       ├── Card
+│       └── Modal
+```
+
+---
+
+## When Building Features
+
+### Always Include:
+1. **Responsive Design**: Test on mobile, tablet, and desktop
+2. **Loading States**: Show spinners or skeletons while data loads
+3. **Error States**: Display helpful error messages
+4. **Empty States**: Show friendly messages when no data exists
+5. **Success Feedback**: Confirm when actions complete successfully
+6. **Accessibility**: Proper labels, contrast, focus states
+
+### Always Avoid:
+1. **localStorage/sessionStorage**: Not supported in Claude artifacts (use React state)
+2. **Hardcoded Data**: Use state or props for dynamic content
+3. **Inline Styles**: Use Tailwind classes instead
+4. **External Dependencies**: Only use available libraries (Lucide, Recharts, etc.)
+5. **Over-formatting**: Keep text natural, avoid excessive bullet points unless requested
+
+---
+
+## Common Request Patterns
+
+### "Create a [feature]"
+- Ask clarifying questions if needed (data structure, user flow)
+- Design with mobile-first approach
+- Include all states (loading, error, success, empty)
+- Match brand colors and design system
+- Consider admin vs user access levels
+
+### "Add functionality to [existing feature]"
+- Review existing code structure
+- Maintain consistency with current patterns
+- Update state management as needed
+- Test interaction with other features
+
+### "Design a [page/component]"
+- Follow established visual style
+- Include navigation (navbar/footer) if full page
+- Use appropriate spacing and typography
+- Add micro-interactions (hover, focus states)
+- Ensure mobile responsiveness
+
+---
+
+## Quick Reference
+
+### Available Libraries in React Artifacts
+- `lucide-react` - Icons
+- `recharts` - Charts and data visualization
+- `lodash` - Utility functions
+- `d3` - Data visualization
+- `mathjs` - Math operations
+
+### Tailwind Core Classes (No Custom Classes)
+- Layout: `flex`, `grid`, `container`, `mx-auto`
+- Spacing: `p-4`, `m-8`, `space-x-4`, `gap-6`
+- Colors: `bg-[#3a4095]`, `text-gray-700`, `border-gray-300`
+- Typography: `text-xl`, `font-bold`, `leading-tight`
+- Borders: `rounded-lg`, `rounded-full`, `border-2`
+- Effects: `shadow-md`, `hover:bg-gray-100`, `transition`
+
+### Common Color Palette
+- Primary: `#3a4095`
+- Primary Dark: `#2d3275`
+- Primary Light: `#5a60b5`
+- Gray Background: `#f9fafb` (gray-50)
+- White: `#ffffff`
+- Text: `#374151` (gray-700)
+- Dark Text: `#111827` (gray-900)
+
+---
+
+## Context for AI Assistant
+
+When I ask for help:
+1. **Assume** this is for IsBreadWithUs book club unless I specify otherwise
+2. **Match** the established brand colors and design system
+3. **Build** complete, functional components (not placeholders)
+4. **Consider** both user and admin perspectives
+5. **Include** proper error handling and edge cases
+6. **Make** it mobile-responsive by default
+7. **Use** React artifacts for interactive components
+8. **Avoid** localStorage/sessionStorage (use React state instead)
+9. **Keep** formatting minimal and natural unless I request lists/structure
+10. **Ask** clarifying questions if requirements are ambiguous
+
+---
+
+## Example Requests You Can Help With
+
+- "Create a meetup registration form with validation"
+- "Design an admin dashboard to view all registered users"
+- "Build a calendar view for upcoming book club events"
+- "Add a book rating and review system"
+- "Create an email notification template"
+- "Design a member profile page"
+- "Build a search and filter for the book library"
+- "Create charts showing attendance trends"
+- "Add a waitlist feature for full events"
+- "Design a mobile-friendly navigation menu"
+
+---
+
+**Remember**: This is a community-focused platform that should feel welcoming, organized, and easy to use for book lovers of all technical skill levels. Prioritize clarity, accessibility, and a warm user experience.

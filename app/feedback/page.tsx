@@ -69,10 +69,10 @@ export default function FeedbackPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#3a4095] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-xl p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Meetup Feedback</h1>
+          <h1 className="text-3xl font-bold text-[#3a4095] mb-2">Meetup Feedback</h1>
           <p className="text-gray-600 mb-8">We&apos;d love to hear your thoughts about the meetup!</p>
 
           <div className="space-y-8">
@@ -89,7 +89,7 @@ export default function FeedbackPage() {
                     onClick={() => setRating(star)}
                     onMouseEnter={() => setHoveredRating(star)}
                     onMouseLeave={() => setHoveredRating(0)}
-                    className="focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                    className="focus:outline-none focus:ring-2 focus:ring-[#3a4095] rounded"
                   >
                     <svg
                       className={`w-10 h-10 transition-colors ${
@@ -134,7 +134,7 @@ export default function FeedbackPage() {
                         setEnjoyedMost(e.target.value);
                         if (e.target.value !== 'Other') setOtherEnjoyedMost('');
                       }}
-                      className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                      className="w-4 h-4 text-[#3a4095] focus:ring-[#3a4095] accent-[#3a4095]"
                     />
                     <span className="ml-3 text-gray-700">{option}</span>
                   </label>
@@ -150,7 +150,7 @@ export default function FeedbackPage() {
                     maxLength={200}
                     rows={3}
                     placeholder="Tell us what you enjoyed..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent resize-none"
                   />
                 </div>
               )}
@@ -168,9 +168,9 @@ export default function FeedbackPage() {
                 maxLength={1000}
                 rows={5}
                 placeholder="Share your thoughts, suggestions, or any other feedback..."
-                className="w-full px-4 py-3 border border-gray-700 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent resize-none"
               />
-              <p className="text-sm text-gray-800 mt-2">
+              <p className="text-sm text-gray-600 mt-2">
                 {suggestions.length}/1000 characters
               </p>
             </div>
@@ -180,7 +180,7 @@ export default function FeedbackPage() {
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="w-full bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full bg-[#3a4095] text-white font-semibold py-3 px-6 rounded-lg hover:bg-[#2d3275] focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
               </button>

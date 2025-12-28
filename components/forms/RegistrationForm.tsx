@@ -67,9 +67,9 @@ export default function RegistrationForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#3a4095' }}>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#3a4095]">
       <div className="max-w-md w-full mx-auto bg-white p-8 rounded-lg shadow-xl space-y-5">
-        <h1 className="text-2xl font-semibold text-center" style={{ color: '#171717' }}>
+        <h1 className="text-2xl font-semibold text-center text-[#3a4095]">
           Bookclub Registration
         </h1>
 
@@ -78,8 +78,7 @@ export default function RegistrationForm() {
           <input
             {...register("name")}
             placeholder="Enter your full name"
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            style={{ color: '#171717' }}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
           />
           {errors.name && (
             <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>
@@ -91,8 +90,7 @@ export default function RegistrationForm() {
           <input
             {...register("phone")}
             placeholder="+92 300 1234567"
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            style={{ color: '#171717' }}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
           />
           {errors.phone && (
             <p className="text-red-600 text-sm mt-1">{errors.phone.message}</p>
@@ -104,8 +102,7 @@ export default function RegistrationForm() {
           <input
             {...register("email")}
             placeholder="your.email@example.com"
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            style={{ color: '#171717' }}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
           />
           {errors.email && (
             <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
@@ -113,11 +110,11 @@ export default function RegistrationForm() {
         </div>
 
         {/* No-show Checkbox */}
-        <label className="flex items-start gap-2 text-sm" style={{ color: '#171717' }}>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
           <input 
             type="checkbox" 
             {...register("isNoShow")} 
-            className="mt-1 accent-gray-700" 
+            className="mt-1 accent-[#3a4095]" 
           />
           <span>
             I missed the previous meetup and want to share my previous payment
@@ -128,10 +125,7 @@ export default function RegistrationForm() {
         <div>
           <label
             htmlFor="paymentScreenshot"
-            className="inline-block cursor-pointer px-4 py-2 rounded text-sm text-white transition-colors"
-            style={{ backgroundColor: '#171717' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2a2a2a'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#171717'}
+            className="inline-block cursor-pointer px-4 py-2 rounded text-sm text-white bg-[#3a4095] hover:bg-[#2d3275] transition-colors"
           >
             Choose File
           </label>
@@ -163,10 +157,7 @@ export default function RegistrationForm() {
         <button
           onClick={handleSubmit(onSubmit)}
           disabled={loading}
-          className="w-full py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-white"
-          style={{ backgroundColor: '#171717' }}
-          onMouseEnter={(e) => !loading && (e.currentTarget.style.backgroundColor = '#2a2a2a')}
-          onMouseLeave={(e) => !loading && (e.currentTarget.style.backgroundColor = '#171717')}
+          className="w-full py-2 rounded font-medium text-white bg-[#3a4095] hover:bg-[#2d3275] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? "Submitting..." : "Register"}
         </button>
