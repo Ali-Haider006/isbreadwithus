@@ -72,6 +72,9 @@ export default function RegistrationForm() {
         <h1 className="text-2xl font-semibold text-center text-[#3a4095]">
           Bookclub Registration
         </h1>
+        <p className="text-justify text-sm text-gray-600 leading-relaxed">
+          Will Durant&apos;s &quot;Fallen Leaves&quot; is a compact collection of aphorisms and reflections that distills his lifelong observations on history, ethics, and human nature. With clear prose and wry insight, Durant invites readers to pause, reconsider values, and seek practical wisdom in everyday life.
+        </p>
 
         {/* Name */}
         <div>
