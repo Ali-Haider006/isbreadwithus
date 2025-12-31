@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function Home() {
   return (
     <main className="font-sans">
@@ -66,16 +68,14 @@ export default function Home() {
           Upcoming Meetup
         </h2>
 
-        <div className="bg-white rounded-2xl p-8 text-[#1F1F1F]">
-          <p className="italic font-serif text-lg">
-            Book title to be announced
-          </p>
-          <p className="mt-2 text-gray-600">
-            Date • Location
-          </p>
-          <p className="mt-4 text-sm text-gray-500">
-            Limited seats available
-          </p>
+        <div className="bg-white rounded-2xl p-8 text-[#1F1F1F] flex flex-col md:flex-row items-center gap-6">
+          <Image src="/currRead.png" alt="Fallen Leaves by Will Durant" width={160} height={240} className="rounded" />
+
+          <div className="flex-1">
+            <p className="italic font-serif text-lg">Fallen Leaves by Will Durant</p>
+            <p className="mt-2 text-gray-600">Date &amp; location to be decided</p>
+            <p className="mt-4 text-sm text-gray-500">Limited seats available</p>
+          </div>
         </div>
       </section>
 
@@ -84,7 +84,7 @@ export default function Home() {
         <p>© Islamabad Read With Us</p>
         <p className="mt-2">
           <a
-            href="https://instagram.com"
+            href="https://www.instagram.com/isbreadwithus/"
             className="underline hover:text-white"
           >
             Instagram
