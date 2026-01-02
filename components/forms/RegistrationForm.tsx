@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
 const phoneRegex = /^(\+92|03)\d{9}$/;
 
 const schema = z.object({
