@@ -1,10 +1,11 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-
+import { Copy, Check } from "lucide-react";
 const phoneRegex = /^(\+92|03)\d{9}$/;
 
 const schema = z.object({
@@ -23,6 +24,8 @@ type FormData = z.infer<typeof schema>;
 export default function RegistrationForm() {
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const easypaisaNumber = "+923181515117";
 
   const {
     register,
@@ -68,13 +71,47 @@ export default function RegistrationForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#3a4095]">
-      <div className="max-w-md w-full mx-auto bg-white p-8 rounded-lg shadow-xl space-y-5">
-        <h1 className="text-2xl font-semibold text-center text-[#3a4095]">
-          Bookclub Registration
-        </h1>
-        <p className="text-justify text-sm text-gray-600 leading-relaxed">
-          Will Durant&apos;s &quot;Fallen Leaves&quot; is a compact collection of aphorisms and reflections that distills his lifelong observations on history, ethics, and human nature. With clear prose and wry insight, Durant invites readers to pause, reconsider values, and seek practical wisdom in everyday life.
-        </p>
+      <div className="max-w-md w-full mx-auto bg-white p-8 rounded-lg shadow-xl space-y-4">
+        <div className="flex gap-4 items-center">
+          <img 
+            src="/currRead.png" 
+            alt="Current Book" 
+            className="w-24 h-32 object-cover rounded shadow-md flex-shrink-0"
+          />
+          <div className="flex-1">
+            <h1 className="text-2xl font-semibold text-[#3a4095] mb-2">
+              Bookclub Registration
+            </h1>
+            <p className="text-justify text-sm text-gray-600 leading-relaxed">
+              Will Durant&apos;s &quot;Fallen Leaves&quot; is a compact collection of aphorisms and reflections that distills his lifelong observations on history, ethics, and human nature. With clear prose and wry insight, Durant invites readers to pause, reconsider values, and seek practical wisdom in everyday life.
+            </p>
+          </div>
+        </div>
+
+      {/* Payment Details */}
+      <div className="bg-gray-50 py-2 px-3 rounded text-sm text-gray-800">
+        <p><span className="font-semibold">Recipient Name:</span> Hasnain Ajmal</p>
+        <div className="flex items-center justify-between">
+          <span><span className="font-semibold">Easypaisa Number:</span> {easypaisaNumber}</span>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(easypaisaNumber);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              } catch {
+                alert("Unable to copy to clipboard");
+              }
+            }}
+            aria-label="Copy Easypaisa number to clipboard"
+            className="ml-3 inline-flex items-center px-2 py-1 bg-[#3a4095] text-white rounded text-xs hover:bg-[#2d3275] transition-colors"
+          >
+            Copy
+          </button>
+        </div>
+        {copied && <p className="text-xs text-green-600 mt-1">Copied!</p>}
+      </div>
 
         {/* Name */}
         <div>
