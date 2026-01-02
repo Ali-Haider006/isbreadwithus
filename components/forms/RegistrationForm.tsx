@@ -70,15 +70,15 @@ export default function RegistrationForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#3a4095]">
-      <div className="max-w-md w-full mx-auto bg-white p-8 rounded-lg shadow-xl space-y-4">
-        <div className="flex gap-4 items-center">
-          <img 
-            src="/currRead.png" 
-            alt="Current Book" 
-            className="w-24 h-32 object-cover rounded shadow-md flex-shrink-0"
+      <div className="max-w-lg sm:max-w-md w-full mx-auto bg-white p-6 sm:p-8 rounded-lg shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-center items-start">
+          <img
+            src="/currRead.png"
+            alt="Current Book"
+            className="w-20 h-28 sm:w-24 sm:h-32 object-cover rounded shadow-md flex-shrink-0 mx-auto sm:mx-0"
           />
           <div className="flex-1">
-            <h1 className="text-2xl font-semibold text-[#3a4095] mb-2">
+            <h1 className="text-xl sm:text-2xl font-semibold text-[#3a4095] mb-2 text-center sm:text-left">
               Bookclub Registration
             </h1>
             <p className="text-justify text-sm text-gray-600 leading-relaxed">
@@ -88,10 +88,10 @@ export default function RegistrationForm() {
         </div>
 
       {/* Payment Details */}
-      <div className="bg-gray-50 py-2 px-3 rounded text-sm text-gray-800">
-        <p><span className="font-semibold">Recipient Name:</span> Hasnain Ajmal</p>
-        <div className="flex items-center justify-between">
-          <span><span className="font-semibold">Easypaisa Number:</span> {easypaisaNumber}</span>
+      <div className="bg-gray-50 py-3 px-3 rounded text-sm text-gray-800">
+        <p className="mb-2"><span className="font-semibold">Recipient Name:</span> Hasnain Ajmal</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <span className="break-words"><span className="font-semibold">Easypaisa Number:</span> {easypaisaNumber}</span>
           <button
             type="button"
             onClick={async () => {
@@ -104,7 +104,7 @@ export default function RegistrationForm() {
               }
             }}
             aria-label="Copy Easypaisa number to clipboard"
-            className="ml-3 inline-flex items-center px-2 py-1 bg-[#3a4095] text-white rounded text-xs hover:bg-[#2d3275] transition-colors"
+            className="ml-0 sm:ml-3 inline-flex items-center px-3 py-1 bg-[#3a4095] text-white rounded text-xs hover:bg-[#2d3275] transition-colors justify-center w-full sm:w-auto"
           >
             Copy
           </button>
@@ -149,7 +149,7 @@ export default function RegistrationForm() {
         </div>
 
         {/* No-show Checkbox */}
-        <label className="flex items-start gap-2 text-sm text-gray-700">
+        <label className="flex items-start sm:items-center gap-2 text-sm text-gray-700">
           <input 
             type="checkbox" 
             {...register("isNoShow")} 
@@ -164,7 +164,7 @@ export default function RegistrationForm() {
         <div>
           <label
             htmlFor="paymentScreenshot"
-            className="inline-block cursor-pointer px-4 py-2 rounded text-sm text-white bg-[#3a4095] hover:bg-[#2d3275] transition-colors"
+            className="inline-block w-full sm:w-auto text-center cursor-pointer px-4 py-2 rounded text-sm text-white bg-[#3a4095] hover:bg-[#2d3275] transition-colors"
           >
             Choose File
           </label>
