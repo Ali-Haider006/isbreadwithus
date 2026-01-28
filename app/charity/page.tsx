@@ -221,7 +221,7 @@ export default function CharityPage() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     min="100"
-                    step="100"
+                    step="1"
                     placeholder="100"
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 
              bg-white text-gray-900 
