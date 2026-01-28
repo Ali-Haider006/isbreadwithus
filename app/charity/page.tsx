@@ -5,7 +5,12 @@ import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
 
-// Replaced BookOpenIcon usages with `/bookclublogo.png` image
+const BookOpenIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 2L2 7v10c0 5.5 3.8 10.7 10 12 6.2-1.3 10-6.5 10-12V7l-10-5zm0 2.2l8 4v8.3c0 4.5-3.2 8.8-8 10-4.8-1.2-8-5.5-8-10V8.2l8-4z"/>
+    <path d="M8 10h8v2H8zm0 3h8v2H8z"/>
+  </svg>
+);
 
 const HeartIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -116,8 +121,7 @@ export default function CharityPage() {
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center space-x-3">
               <div className="h-10 flex items-center">
-                <img src="/bookclublogo.png" alt="IsbReadWithUs logo" className="h-10 w-auto object-contain" />
-              </div>
+                <img src="/bookclublogo.png" alt="IsbReadWithUs logo" className="h-10 w-auto mx-auto mb-3 object-contain max-w-[140px]" />              </div>
               <span className="text-xl font-bold text-[#3a4095]">IsbReadWithUs</span>
             </Link>
             <Link href="/" className="text-gray-700 hover:text-[#3a4095] transition">
@@ -247,7 +251,7 @@ export default function CharityPage() {
             {/* Impact Stats */}
             <div className="mt-8 grid grid-cols-2 gap-4">
               <div className="bg-white rounded-xl p-6 text-center shadow">
-                <img src="/bookclublogo.png" alt="IsbReadWithUs logo" className="h-10 w-auto mx-auto mb-3 object-contain max-w-[140px]" />
+                <BookOpenIcon className="h-10 w-auto mx-auto mb-3 text-[#3a4095]" />
                 <div className="text-2xl font-bold text-gray-900">{totalBooks}</div>
                 <div className="text-sm text-gray-600">Books Donated</div>
               </div>
