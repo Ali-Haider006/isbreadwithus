@@ -406,7 +406,7 @@ export default function BookClubLanding() {
                           <span>?? members registered</span> {/* You can add count via join or RPC */}
                         </div>
                       </div>
-                      <a href="/register" className="block w-full bg-[#3a4095] text-white text-center px-4 py-2 rounded-full hover:bg-[#2d3275] transition">
+                      <a href={`/meetups/${meetup.id}`} className="block w-full bg-[#3a4095] text-white text-center px-4 py-2 rounded-full hover:bg-[#2d3275] transition">
                         Register Now
                       </a>
                     </div>

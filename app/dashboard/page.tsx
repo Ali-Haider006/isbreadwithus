@@ -104,7 +104,7 @@ export default function DashboardPage() {
         `)
         .order('created_at', { ascending: false })
         .limit(5)
-
+          
       setRecentRegistrations(regs || [])
       setLoading(false)
     }
@@ -195,7 +195,6 @@ export default function DashboardPage() {
         {/* Content */}
         <main className="flex-1 overflow-y-auto p-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard Overview</h1>
-
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-xl shadow p-6 border border-gray-200">
@@ -262,7 +261,8 @@ export default function DashboardPage() {
                         <div className="text-sm text-gray-500">{reg.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {reg.meetup?.[0]?.title || '—'}
+                        {/* @ts-expect-error hello */}
+                        { reg?.meetup?.title ?? '—'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -288,6 +288,7 @@ export default function DashboardPage() {
                   )}
                 </tbody>
               </table>
+                            
             </div>
           </div>
         </main>
