@@ -17,7 +17,7 @@ type Book = {
   author: string | null
   description: string | null
   genre: string | null
-  status: 'upcoming' | 'current' | 'completed' | null
+  status: 'upcoming'| 'completed' | null
   start_date: string | null
   end_date: string | null
 }
