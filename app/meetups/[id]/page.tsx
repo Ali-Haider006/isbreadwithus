@@ -6,7 +6,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   BookOpen, Calendar, MapPin, DollarSign, Users,
-  AlertCircle, ArrowLeft, CheckCircle, Upload, X, Building2, CreditCard, User
+  AlertCircle, ArrowLeft, CheckCircle, Upload, X,
+  Building2, CreditCard, User
 } from 'lucide-react'
 
 interface Meetup {
@@ -37,6 +38,7 @@ export default function MeetupRegistration() {
 
   const [meetup, setMeetup] = useState<Meetup | null>(null)
   const [paymentRecipient, setPaymentRecipient] = useState<PaymentRecipient | null>(null)
+  const [slotsLeft, setSlotsLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
     full_name: '',
@@ -71,6 +73,17 @@ export default function MeetupRegistration() {
       }
 
       setMeetup(data)
+
+      // Fetch registration count to calculate slots left
+      if (data.max_slots) {
+        const { count } = await supabase
+          .from('meetup_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('meetup_id', id)
+          .neq('payment_status', 'rejected')
+
+        setSlotsLeft(data.max_slots - (count ?? 0))
+      }
 
       // Fetch payment recipient if applicable
       if (data.payment_required && data.payment_recipient_id) {
@@ -137,9 +150,26 @@ export default function MeetupRegistration() {
     setError(null)
 
     try {
+      // Re-check slot availability before inserting (race condition guard)
+      if (meetup?.max_slots) {
+        const { count, error: countError } = await supabase
+          .from('meetup_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('meetup_id', id)
+          .neq('payment_status', 'rejected')
+
+        if (countError) throw countError
+
+        if (count !== null && count >= meetup.max_slots) {
+          setError('Sorry, this meetup is now fully booked.')
+          setSlotsLeft(0)
+          setSubmitting(false)
+          return
+        }
+      }
+
       let screenshot_url: string | null = null
 
-      // Upload screenshot if provided
       if (screenshotFile) {
         const ext = screenshotFile.name.split('.').pop()
         const fileName = `${id}/${Date.now()}_${form.email.replace(/[^a-z0-9]/gi, '_')}.${ext}`
@@ -179,20 +209,22 @@ export default function MeetupRegistration() {
     }
   }
 
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3a4095]"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3a4095]" />
       </div>
     )
   }
 
+  // ── Fatal error (no meetup) ──────────────────────────────────────────────
   if (error && !meetup) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
         <h1 className="text-2xl font-bold text-gray-800 mb-3">Oops...</h1>
-        <p className="text-gray-600 mb-8 max-w-md">{error || 'Meetup not found'}</p>
+        <p className="text-gray-600 mb-8 max-w-md">{error}</p>
         <button
           onClick={() => router.push('/meetups')}
           className="px-6 py-3 bg-[#3a4095] text-white rounded-lg hover:bg-indigo-800"
@@ -203,10 +235,42 @@ export default function MeetupRegistration() {
     )
   }
 
+  // ── Fully booked ─────────────────────────────────────────────────────────
+  if (slotsLeft !== null && slotsLeft <= 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mb-6">
+          <Users className="h-10 w-10 text-orange-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-3">This Meetup is Fully Booked</h1>
+        <p className="text-gray-600 mb-8 max-w-md">
+          All slots for <span className="font-semibold">{meetup!.title}</span> have been filled.
+          Follow us on Instagram to hear about future meetups.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => router.back()}
+            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Go Back
+          </button>
+          <a
+            href="https://www.instagram.com/islamabadreadswithus/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-3 bg-[#3a4095] text-white rounded-lg hover:bg-indigo-800"
+          >
+            Follow on Instagram
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Main page ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        {/* Back link */}
         <button
           onClick={() => router.back()}
           className="inline-flex items-center text-[#3a4095] hover:text-indigo-800 mb-6"
@@ -216,7 +280,8 @@ export default function MeetupRegistration() {
         </button>
 
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          {/* Header / Meetup info */}
+
+          {/* Header */}
           <div className="bg-[#3a4095] text-white p-8">
             <div className="flex items-center gap-4 mb-4">
               <BookOpen className="h-10 w-10" />
@@ -244,7 +309,18 @@ export default function MeetupRegistration() {
 
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                <span>Max {meetup!.max_slots || 'unlimited'} slots</span>
+                <span>
+                  {slotsLeft === null
+                    ? 'Unlimited slots'
+                    : slotsLeft <= 3
+                    ? `Only ${slotsLeft} slot${slotsLeft === 1 ? '' : 's'} left!`
+                    : `${slotsLeft} slots remaining`}
+                </span>
+                {slotsLeft !== null && slotsLeft <= 3 && (
+                  <span className="bg-orange-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    Almost full
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -258,7 +334,7 @@ export default function MeetupRegistration() {
             </div>
           </div>
 
-          {/* Success message */}
+          {/* Success state */}
           {success ? (
             <div className="p-10 text-center">
               <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
@@ -266,21 +342,20 @@ export default function MeetupRegistration() {
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-3">Registration Submitted!</h2>
               <p className="text-gray-600 mb-8 max-w-lg mx-auto">
-              {meetup!.payment_required
-                ? "Thank you! Your registration is pending. We'll verify your payment and confirm your spot soon."
-                : "Thank you! We'll see you at the meetup."}{" "}
-              For any questions,{" "}
-              <a
-                href="https://www.instagram.com/islamabadreadswithus/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#3a4095] underline hover:text-indigo-800"
-              >
-                reach out to us on Instagram
-              </a>{" "}
-              or check your email for updates.
-            </p>
-                  
+                {meetup!.payment_required
+                  ? "Thank you! Your registration is pending. We'll verify your payment and confirm your spot soon."
+                  : "Thank you! We'll see you at the meetup."}{' '}
+                For any questions,{' '}
+                <a
+                  href="https://www.instagram.com/islamabadreadswithus/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#3a4095] underline hover:text-indigo-800"
+                >
+                  reach out to us on Instagram
+                </a>{' '}
+                or check your email for updates.
+              </p>
               <button
                 onClick={() => router.push('/meetups')}
                 className="px-8 py-3 bg-[#3a4095] text-white rounded-lg hover:bg-indigo-800"
@@ -297,7 +372,6 @@ export default function MeetupRegistration() {
                 </div>
               )}
 
-              {/* Personal Info */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Full Name <span className="text-red-500">*</span>
@@ -355,10 +429,9 @@ export default function MeetupRegistration() {
                 />
               </div>
 
-              {/* Payment Section */}
+              {/* Payment section */}
               {meetup!.payment_required && (
                 <div className="space-y-4">
-                  {/* Payment Recipient Info */}
                   {paymentRecipient ? (
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
                       <h3 className="font-semibold text-blue-900 mb-4 text-base flex items-center gap-2">
@@ -414,7 +487,7 @@ export default function MeetupRegistration() {
                     </div>
                   )}
 
-                  {/* Screenshot Upload */}
+                  {/* Screenshot upload */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Payment Screenshot <span className="text-red-500">*</span>
