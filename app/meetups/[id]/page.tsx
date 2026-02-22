@@ -1,10 +1,13 @@
 // app/meetups/[id]/register/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { BookOpen, Calendar, MapPin, DollarSign, Users, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react'
+import {
+  BookOpen, Calendar, MapPin, DollarSign, Users,
+  AlertCircle, ArrowLeft, CheckCircle, Upload, X, Building2, CreditCard, User
+} from 'lucide-react'
 
 interface Meetup {
   id: string
@@ -16,14 +19,24 @@ interface Meetup {
   payment_required: boolean | null
   payment_amount: number | null
   status: string | null
+  payment_recipient_id: string | null
+}
+
+interface PaymentRecipient {
+  id: string
+  recipient_name: string
+  bank_name: string | null
+  bank_account_number: string | null
 }
 
 export default function MeetupRegistration() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [meetup, setMeetup] = useState<Meetup | null>(null)
+  const [paymentRecipient, setPaymentRecipient] = useState<PaymentRecipient | null>(null)
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
     full_name: '',
@@ -31,11 +44,12 @@ export default function MeetupRegistration() {
     phone: '',
     why_join: '',
   })
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null)
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  // Load meetup data
   useEffect(() => {
     async function fetchMeetup() {
       const { data, error } = await supabase
@@ -46,11 +60,29 @@ export default function MeetupRegistration() {
 
       if (error || !data) {
         setError('Meetup not found or has been removed')
-      } else if (data.status !== 'upcoming') {
-        setError('Registrations are closed for this meetup')
-      } else {
-        setMeetup(data)
+        setLoading(false)
+        return
       }
+
+      if (data.status !== 'upcoming') {
+        setError('Registrations are closed for this meetup')
+        setLoading(false)
+        return
+      }
+
+      setMeetup(data)
+
+      // Fetch payment recipient if applicable
+      if (data.payment_required && data.payment_recipient_id) {
+        const { data: recipientData } = await supabase
+          .from('payment_recipients')
+          .select('*')
+          .eq('id', data.payment_recipient_id)
+          .single()
+
+        if (recipientData) setPaymentRecipient(recipientData)
+      }
+
       setLoading(false)
     }
 
@@ -63,18 +95,66 @@ export default function MeetupRegistration() {
     setError(null)
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file (JPG, PNG, etc.)')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be smaller than 5MB')
+      return
+    }
+
+    setScreenshotFile(file)
+    setError(null)
+
+    const reader = new FileReader()
+    reader.onloadend = () => setScreenshotPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const removeScreenshot = () => {
+    setScreenshotFile(null)
+    setScreenshotPreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!form.full_name.trim()) return setError('Full name is required')
     if (!form.email.trim()) return setError('Email is required')
     if (!form.email.includes('@')) return setError('Please enter a valid email')
+    if (meetup?.payment_required && !screenshotFile) {
+      return setError('Please upload your payment screenshot')
+    }
 
     setSubmitting(true)
     setError(null)
 
     try {
-      const { error } = await supabase
+      let screenshot_url: string | null = null
+
+      // Upload screenshot if provided
+      if (screenshotFile) {
+        const ext = screenshotFile.name.split('.').pop()
+        const fileName = `${id}/${Date.now()}_${form.email.replace(/[^a-z0-9]/gi, '_')}.${ext}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('payment')
+          .upload(fileName, screenshotFile, { upsert: false })
+
+        if (uploadError) throw new Error('Failed to upload payment screenshot: ' + uploadError.message)
+
+        const { data: urlData } = supabase.storage.from('payment').getPublicUrl(fileName)
+        screenshot_url = urlData.publicUrl
+      }
+
+      const { error: insertError } = await supabase
         .from('meetup_registrations')
         .insert({
           meetup_id: id,
@@ -83,12 +163,15 @@ export default function MeetupRegistration() {
           phone: form.phone.trim() || null,
           why_join: form.why_join.trim() || null,
           payment_status: meetup?.payment_required ? 'pending' : 'verified',
+          payment_screenshot_url: screenshot_url,
         })
 
-      if (error) throw error
+      if (insertError) throw insertError
 
       setSuccess(true)
       setForm({ full_name: '', email: '', phone: '', why_join: '' })
+      setScreenshotFile(null)
+      setScreenshotPreview(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit registration. Please try again.')
     } finally {
@@ -104,7 +187,7 @@ export default function MeetupRegistration() {
     )
   }
 
-  if (error || !meetup) {
+  if (error && !meetup) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
@@ -139,37 +222,36 @@ export default function MeetupRegistration() {
               <BookOpen className="h-10 w-10" />
               <h1 className="text-3xl font-bold">Registration</h1>
             </div>
-            <h2 className="text-2xl font-semibold mb-2">{meetup.title}</h2>
+            <h2 className="text-2xl font-semibold mb-2">{meetup!.title}</h2>
 
             <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6 text-white/90">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
                 <span>
-                  {meetup.meetup_date ? new Date(meetup.meetup_date as string).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                    year: 'numeric'
-                  }) : 'Date not set'}
-                  {meetup.meetup_time && ` • ${meetup.meetup_time}`}
+                  {meetup!.meetup_date
+                    ? new Date(meetup!.meetup_date).toLocaleDateString('en-US', {
+                        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                      })
+                    : 'Date not set'}
+                  {meetup!.meetup_time && ` • ${meetup!.meetup_time}`}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
-                <span>{meetup.location}</span>
+                <span>{meetup!.location}</span>
               </div>
 
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                <span>Max {meetup.max_slots || 'unlimited'} slots</span>
+                <span>Max {meetup!.max_slots || 'unlimited'} slots</span>
               </div>
 
               <div className="flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
                 <span>
-                  {meetup.payment_required
-                    ? `PKR ${meetup.payment_amount || 0} (payment required)`
+                  {meetup!.payment_required
+                    ? `PKR ${meetup!.payment_amount || 0} (payment required)`
                     : 'Free entry'}
                 </span>
               </div>
@@ -184,10 +266,21 @@ export default function MeetupRegistration() {
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-3">Registration Submitted!</h2>
               <p className="text-gray-600 mb-8 max-w-lg mx-auto">
-                {meetup.payment_required
-                  ? 'Thank you! Your registration is pending. Please complete payment as per the instructions below.'
-                  : 'Thank you! We’ll see you at the meetup.'}
-              </p>
+              {meetup!.payment_required
+                ? "Thank you! Your registration is pending. We'll verify your payment and confirm your spot soon."
+                : "Thank you! We'll see you at the meetup."}{" "}
+              For any questions,{" "}
+              <a
+                href="https://www.instagram.com/islamabadreadswithus/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#3a4095] underline hover:text-indigo-800"
+              >
+                reach out to us on Instagram
+              </a>{" "}
+              or check your email for updates.
+            </p>
+                  
               <button
                 onClick={() => router.push('/meetups')}
                 className="px-8 py-3 bg-[#3a4095] text-white rounded-lg hover:bg-indigo-800"
@@ -196,14 +289,15 @@ export default function MeetupRegistration() {
               </button>
             </div>
           ) : (
-            /* Form */
             <form onSubmit={handleSubmit} className="p-8 lg:p-10 space-y-6">
               {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   {error}
                 </div>
               )}
 
+              {/* Personal Info */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Full Name <span className="text-red-500">*</span>
@@ -261,15 +355,115 @@ export default function MeetupRegistration() {
                 />
               </div>
 
-              {meetup.payment_required && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5 text-sm">
-                  <p className="font-medium text-yellow-800 mb-2">
-                    Payment Required (PKR {meetup.payment_amount || 0})
-                  </p>
-                  <p className="text-yellow-700">
-                    After submitting this form, please follow the payment instructions provided by the organizer.
-                    Your spot will be confirmed once payment is verified.
-                  </p>
+              {/* Payment Section */}
+              {meetup!.payment_required && (
+                <div className="space-y-4">
+                  {/* Payment Recipient Info */}
+                  {paymentRecipient ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+                      <h3 className="font-semibold text-blue-900 mb-4 text-base flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Send Payment of PKR {meetup!.payment_amount || 0} to:
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <User className="h-4 w-4 text-blue-700" />
+                          </div>
+                          <div>
+                            <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Account Name</p>
+                            <p className="text-blue-900 font-semibold">{paymentRecipient.recipient_name}</p>
+                          </div>
+                        </div>
+
+                        {paymentRecipient.bank_name && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                              <Building2 className="h-4 w-4 text-blue-700" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Bank</p>
+                              <p className="text-blue-900 font-semibold">{paymentRecipient.bank_name}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {paymentRecipient.bank_account_number && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                              <CreditCard className="h-4 w-4 text-blue-700" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Account Number</p>
+                              <p className="text-blue-900 font-semibold font-mono tracking-wider">
+                                {paymentRecipient.bank_account_number}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5 text-sm">
+                      <p className="font-medium text-yellow-800 mb-1">
+                        Payment Required (PKR {meetup!.payment_amount || 0})
+                      </p>
+                      <p className="text-yellow-700">
+                        Please contact the organizer for payment details before submitting.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Screenshot Upload */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Payment Screenshot <span className="text-red-500">*</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      After completing the payment, upload a screenshot as proof. Your spot will be confirmed once verified.
+                    </p>
+
+                    {screenshotPreview ? (
+                      <div className="relative rounded-xl overflow-hidden border-2 border-[#3a4095] border-dashed">
+                        <img
+                          src={screenshotPreview}
+                          alt="Payment screenshot preview"
+                          className="w-full max-h-64 object-contain bg-gray-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeScreenshot}
+                          className="absolute top-3 right-3 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 shadow-md transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-3 py-2 flex items-center gap-2">
+                          <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                          {screenshotFile?.name}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-[#3a4095] hover:bg-indigo-50/30 transition-colors group"
+                      >
+                        <Upload className="h-8 w-8 text-gray-400 group-hover:text-[#3a4095] mx-auto mb-3 transition-colors" />
+                        <p className="text-sm font-medium text-gray-600 group-hover:text-[#3a4095] transition-colors">
+                          Click to upload payment screenshot
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">JPG, PNG up to 5MB</p>
+                      </button>
+                    )}
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </div>
                 </div>
               )}
 
