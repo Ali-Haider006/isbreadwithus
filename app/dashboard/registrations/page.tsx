@@ -33,10 +33,12 @@ function DetailPanel({
   registration,
   onClose,
   onStatusChange,
+  statusChanging,
 }: {
   registration: Registration
   onClose: () => void
-  onStatusChange: (id: string, status: 'verified' | 'rejected') => void
+  onStatusChange: (id: string, status: 'verified' | 'rejected') => Promise<void>
+  statusChanging: boolean
 }) {
   const badge = getStatusBadge(registration.payment_status)
   const [imgError, setImgError] = useState(false)
@@ -117,9 +119,12 @@ function DetailPanel({
                 </Link>
                 <p className="text-xs text-gray-500">
                   {registration.meetup?.meetup_date
-                    ? new Date(registration.meetup.meetup_date).toLocaleDateString('en-US', {
-                        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-                      })
+                    ? (() => {
+                        const [y, m, d] = registration.meetup.meetup_date.split('-').map(Number)
+                        return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+                          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                        })
+                      })()
                     : '—'}
                 </p>
               </div>
@@ -183,16 +188,26 @@ function DetailPanel({
           <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
             <button
               onClick={() => onStatusChange(registration.id, 'verified')}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
+              disabled={statusChanging}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <CheckCircle className="h-4 w-4" />
+              {statusChanging ? (
+                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4" />
+              )}
               Verify Payment
             </button>
             <button
               onClick={() => onStatusChange(registration.id, 'rejected')}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors"
+              disabled={statusChanging}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <XCircle className="h-4 w-4" />
+              {statusChanging ? (
+                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
               Reject
             </button>
           </div>
@@ -220,8 +235,15 @@ export default function RegistrationsDashboard() {
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedReg, setSelectedReg] = useState<Registration | null>(null)
+  const [statusChanging, setStatusChanging] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const router = useRouter()
   const supabase = createClient()
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   const filtered = useMemo(() => {
     let result = [...registrations]
@@ -263,19 +285,57 @@ export default function RegistrationsDashboard() {
   }, [router, supabase])
 
   const handleStatusChange = async (id: string, newStatus: 'verified' | 'rejected') => {
-    if (!confirm(`Are you sure you want to mark this as ${newStatus}?`)) return
+    if (!confirm(`Are you sure you want to mark this registration as ${newStatus}?`)) return
 
+    setStatusChanging(true)
+
+    // 1. Update status in DB
     const { error } = await supabase
       .from('meetup_registrations')
       .update({ payment_status: newStatus })
       .eq('id', id)
 
-    if (!error) {
-      setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: newStatus } : r))
-      setSelectedReg(prev => prev?.id === id ? { ...prev, payment_status: newStatus } : prev)
-    } else {
-      alert('Failed to update status')
+    if (error) {
+      showToast('Failed to update status. Please try again.', 'error')
+      setStatusChanging(false)
+      return
     }
+
+    // 2. Update local state
+    setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: newStatus } : r))
+    setSelectedReg(prev => prev?.id === id ? { ...prev, payment_status: newStatus } : prev)
+
+    // 3. Send status email
+    const reg = registrations.find(r => r.id === id)
+    if (reg?.email) {
+      try {
+        await fetch('/api/payment-status-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: reg.email,
+            full_name: reg.full_name,
+            meetup_title: reg.meetup?.title,
+            meetup_date: reg.meetup?.meetup_date,
+            status: newStatus,
+          }),
+        })
+        showToast(
+          newStatus === 'verified'
+            ? `Payment verified and confirmation email sent to ${reg.email}`
+            : `Registration rejected and email sent to ${reg.email}`,
+          'success'
+        )
+      } catch {
+        // Email failure doesn't undo the status change
+        showToast(`Status updated but email notification failed.`, 'error')
+        console.error('Status email failed')
+      }
+    } else {
+      showToast(`Status updated to ${newStatus}.`, 'success')
+    }
+
+    setStatusChanging(false)
   }
 
   const uniqueMeetups = Array.from(
@@ -285,13 +345,24 @@ export default function RegistrationsDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3a4095]"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3a4095]" />
       </div>
     )
   }
 
   return (
     <div className="flex h-screen bg-gray-100">
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 transition-all ${
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {toast.message}
+        </div>
+      )}
+
       {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#3a4095] transform ${
@@ -468,14 +539,16 @@ export default function RegistrationsDashboard() {
                             <div className="flex gap-3">
                               <button
                                 onClick={() => handleStatusChange(r.id, 'verified')}
-                                className="text-green-600 hover:text-green-900"
+                                disabled={statusChanging}
+                                className="text-green-600 hover:text-green-900 disabled:opacity-40"
                                 title="Verify"
                               >
                                 <CheckCircle className="h-5 w-5" />
                               </button>
                               <button
                                 onClick={() => handleStatusChange(r.id, 'rejected')}
-                                className="text-red-600 hover:text-red-900"
+                                disabled={statusChanging}
+                                className="text-red-600 hover:text-red-900 disabled:opacity-40"
                                 title="Reject"
                               >
                                 <XCircle className="h-5 w-5" />
@@ -513,6 +586,7 @@ export default function RegistrationsDashboard() {
           registration={selectedReg}
           onClose={() => setSelectedReg(null)}
           onStatusChange={handleStatusChange}
+          statusChanging={statusChanging}
         />
       )}
     </div>

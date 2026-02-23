@@ -220,7 +220,7 @@ export default function MeetupsDashboard() {
                         <td className="px-6 py-4 text-gray-600">
                           {m.max_slots ? `${m.max_slots} slots` : '—'}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-gray-600">
                           {m.payment_required
                             ? `PKR ${m.payment_amount || 0}`
                             : 'Free'}

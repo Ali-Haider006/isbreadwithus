@@ -168,6 +168,21 @@ export default function MeetupRegistration() {
         }
       }
 
+      // Check for duplicate registration
+      const { data: existing } = await supabase
+        .from('meetup_registrations')
+        .select('id')
+        .eq('meetup_id', id)
+        .eq('email', form.email.trim())
+        .neq('payment_status', 'rejected')
+        .maybeSingle()
+
+      if (existing) {
+        setError('This email is already registered for this meetup.')
+        setSubmitting(false)
+        return
+      }
+
       let screenshot_url: string | null = null
 
       if (screenshotFile) {
@@ -197,6 +212,27 @@ export default function MeetupRegistration() {
         })
 
       if (insertError) throw insertError
+
+      // Send confirmation email — fire and don't block success UI on failure
+      try {
+        await fetch('/api/registration-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: form.full_name.trim(),
+            email: form.email.trim(),
+            meetup_title: meetup?.title,
+            meetup_date: meetup?.meetup_date,
+            meetup_time: meetup?.meetup_time,
+            location: meetup?.location,
+            payment_required: meetup?.payment_required,
+            payment_amount: meetup?.payment_amount,
+          }),
+        })
+      } catch {
+        // Email failure should never block the user — registration is already saved
+        console.error('Email notification failed')
+      }
 
       setSuccess(true)
       setForm({ full_name: '', email: '', phone: '', why_join: '' })
@@ -345,7 +381,7 @@ export default function MeetupRegistration() {
                 {meetup!.payment_required
                   ? "Thank you! Your registration is pending. We'll verify your payment and confirm your spot soon."
                   : "Thank you! We'll see you at the meetup."}{' '}
-                For any questions,{' '}
+                A confirmation email has been sent to your inbox. For any questions,{' '}
                 <a
                   href="https://www.instagram.com/islamabadreadswithus/"
                   target="_blank"
@@ -353,8 +389,7 @@ export default function MeetupRegistration() {
                   className="text-[#3a4095] underline hover:text-indigo-800"
                 >
                   reach out to us on Instagram
-                </a>{' '}
-                or check your email for updates.
+                </a>.
               </p>
               <button
                 onClick={() => router.push('/meetups')}
