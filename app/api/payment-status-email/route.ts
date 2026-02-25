@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
           </a>`
 
     await resend.emails.send({
-      from: 'IsbReadWithUs <noreply@yourdomain.com>',
+      from: 'IsbReadWithUs <noreply@isbreadwithus.com>',
       to: [email],
       subject,
       html: `
