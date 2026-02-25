@@ -1,206 +1,252 @@
-'use client';
+// app/feedback/page.tsx   ← or app/contact/feedback/page.tsx depending on your routing preference
+'use client'
 
-import { useState } from 'react';
-
-type SubmitStatus = {
-  type: 'success' | 'error';
-  message: string;
-} | null;
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { BookOpen, Send, User, Mail, MessageSquare, Smile, ThumbsUp, AlertCircle, HelpCircle } from 'lucide-react'
 
 export default function FeedbackPage() {
-  const [rating, setRating] = useState(0);
-  const [hoveredRating, setHoveredRating] = useState(0);
-  const [enjoyedMost, setEnjoyedMost] = useState('');
-  const [otherEnjoyedMost, setOtherEnjoyedMost] = useState('');
-  const [suggestions, setSuggestions] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    type: '' as 'praise' | 'suggestion' | 'complaint' | 'question' | '',
+    message: '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+  const supabase = createClient()
 
-  const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'] as const;
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+    setError(null)
+  }
 
-  const enjoyedOptions = [
-    'Book discussion',
-    'Meeting new people',
-    'Venue/Location',
-    'Moderator/Facilitation',
-    'Refreshments/Snacks',
-    'Other'
-  ];
-
-  const handleSubmit = async () => {
-    if (!rating || !enjoyedMost || (enjoyedMost === 'Other' && !otherEnjoyedMost.trim())) {
-      setSubmitStatus({ type: 'error', message: 'Please complete all required fields.' });
-      return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.type) {
+      setError('Please select the type of feedback')
+      return
+    }
+    
+    if (!formData.message.trim()) {
+      setError('Please enter your message')
+      return
     }
 
-    setIsSubmitting(true);
-    setSubmitStatus(null);
+    setLoading(true)
+    setError(null)
 
     try {
-      const response = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rating,
-          enjoyed_most: enjoyedMost === 'Other' ? otherEnjoyedMost.trim() : enjoyedMost,
-          suggestions: suggestions.trim() || null,
-        }),
-      });
+      const { error } = await supabase.from('feedback').insert({
+        name: formData.name.trim() || null,
+        email: formData.email.trim() || null,
+        type: formData.type,
+        message: formData.message.trim(),
+      })
 
-      if (!response.ok) {
-        throw new Error('Failed to submit feedback');
-      }
+      if (error) throw error
 
-      setSubmitStatus({ type: 'success', message: 'Thank you for your feedback!' });
+      setSuccess(true)
+      setFormData({ name: '', email: '', type: '', message: '' })
       
-      // Reset form
-      setRating(0);
-      setEnjoyedMost('');
-      setOtherEnjoyedMost('');
-      setSuggestions('');
-    } catch (error) {
-      console.error(error);
-      setSubmitStatus({ type: 'error', message: 'Failed to submit feedback. Please try again.' });
+      // Optional: auto-redirect after 4 seconds
+      setTimeout(() => {
+        router.push('/')
+      }, 4000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
-      setIsSubmitting(false);
+      setLoading(false)
     }
-  };
+  }
+
+  const feedbackTypes = [
+    { value: 'praise', label: 'Praise / Positive Feedback', icon: ThumbsUp, color: 'text-green-600' },
+    { value: 'suggestion', label: 'Suggestion / Idea', icon: Smile, color: 'text-blue-600' },
+    { value: 'question', label: 'Question', icon: HelpCircle, color: 'text-yellow-600' },
+    { value: 'complaint', label: 'Complaint / Issue', icon: AlertCircle, color: 'text-red-600' },
+  ]
 
   return (
-    <div className="min-h-screen bg-[#3a4095] py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <h1 className="text-3xl font-bold text-[#3a4095] mb-2">Meetup Feedback</h1>
-          <p className="text-gray-600 mb-8">We&apos;d love to hear your thoughts about the meetup!</p>
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="flex justify-center mb-6">
+            <div className="h-16 w-16 bg-[#3a4095] rounded-full flex items-center justify-center">
+              <BookOpen className="h-8 w-8 text-white" />
+            </div>
+          </div>
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">
+            We’d Love to Hear From You
+          </h1>
+          <p className="text-lg text-black max-w-2xl mx-auto">
+            Your feedback helps us make IsBreadWithUs even better — whether it’s praise, ideas, questions, or things we can improve.
+          </p>
+        </div>
 
-          <div className="space-y-8">
-            {/* Question 1: Rating */}
-            <div>
-              <label className="block text-lg font-semibold text-gray-900 mb-4">
-                How would you rate this meetup overall? <span className="text-red-500">*</span>
+        {success ? (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+              <Send className="h-8 w-8 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-semibold text-green-800 mb-3">
+              Thank You!
+            </h2>
+            <p className="text-black mb-6">
+              We really appreciate you taking the time to share your thoughts. 
+              Our team will review your message soon.
+            </p>
+            <p className="text-sm text-black">
+              Redirecting to home in a few seconds... or{' '}
+              <button
+                onClick={() => router.push('/')}
+                className="text-[#3a4095] hover:underline font-medium"
+              >
+                go back now
+              </button>
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="bg-white shadow-xl rounded-2xl p-8 md:p-10">
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Type Selection */}
+            <div className="mb-8">
+              <label className="block text-sm font-medium text-black mb-3">
+                What type of feedback is this?
               </label>
-              <div className="flex items-center gap-2 mb-2">
-                {[1, 2, 3, 4, 5].map((star) => (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {feedbackTypes.map((type) => (
                   <button
-                    key={star}
+                    key={type.value}
                     type="button"
-                    onClick={() => setRating(star)}
-                    onMouseEnter={() => setHoveredRating(star)}
-                    onMouseLeave={() => setHoveredRating(0)}
-                    className="focus:outline-none focus:ring-2 focus:ring-[#3a4095] rounded"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, type: type.value as 'praise' | 'suggestion' | 'complaint' | 'question' }))
+                      setError(null)
+                    }}
+                    className={`flex flex-col items-center p-4 border-2 rounded-xl transition-all ${
+                      formData.type === type.value
+                        ? 'border-[#3a4095] bg-indigo-50 ring-2 ring-[#3a4095]/30'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
                   >
-                    <svg
-                      className={`w-10 h-10 transition-colors ${
-                        star <= (hoveredRating || rating)
-                          ? 'text-yellow-400 fill-current'
-                          : 'text-gray-300'
-                      }`}
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                    >
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
+                    <type.icon className={`h-7 w-7 mb-2 ${type.color}`} />
+                    <span className="text-sm font-medium text-center">{type.label}</span>
                   </button>
                 ))}
               </div>
-              {rating > 0 && (
-                <p className="text-sm text-gray-600 mt-2">
-                  {ratingLabels[rating]}
-                </p>
-              )}
             </div>
 
-            {/* Question 2: What Did You Enjoy Most */}
-            <div>
-              <label className="block text-lg font-semibold text-gray-900 mb-4">
-                What did you enjoy most about the meetup? <span className="text-red-500">*</span>
+            {/* Name */}
+            <div className="mb-6">
+              <label htmlFor="name" className="block text-sm font-medium text-black mb-2">
+                Your Name (optional)
               </label>
-              <div className="space-y-3">
-                {enjoyedOptions.map((option) => (
-                  <label
-                    key={option}
-                    className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <input
-                      type="radio"
-                      name="enjoyedMost"
-                      value={option}
-                      checked={enjoyedMost === option}
-                      onChange={(e) => {
-                        setEnjoyedMost(e.target.value);
-                        if (e.target.value !== 'Other') setOtherEnjoyedMost('');
-                      }}
-                      className="w-4 h-4 text-[#3a4095] focus:ring-[#3a4095] accent-[#3a4095]"
-                    />
-                    <span className="ml-3 text-gray-700">{option}</span>
-                  </label>
-                ))}
-              </div>
-              {enjoyedMost === 'Other' && (
-                <div className="mt-3">
-                  <label htmlFor="otherEnjoyed" className="block text-sm font-medium text-gray-900 mb-2">Please specify</label>
-                  <textarea
-                    id="otherEnjoyed"
-                    value={otherEnjoyedMost}
-                    onChange={(e) => setOtherEnjoyedMost(e.target.value)}
-                    maxLength={200}
-                    rows={3}
-                    placeholder="Tell us what you enjoyed..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent resize-none"
-                  />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
                 </div>
-              )}
-            </div>
-
-            {/* Question 3: Suggestions */}
-            <div>
-              <label htmlFor="suggestions" className="block text-lg font-semibold text-gray-900 mb-4">
-                Any suggestions for improvement or comments?
-              </label>
-              <textarea
-                id="suggestions"
-                value={suggestions}
-                onChange={(e) => setSuggestions(e.target.value)}
-                maxLength={1000}
-                rows={5}
-                placeholder="Share your thoughts, suggestions, or any other feedback..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent resize-none"
-              />
-              <p className="text-sm text-gray-600 mt-2">
-                {suggestions.length}/1000 characters
-              </p>
-            </div>
-
-            {/* Submit Button */}
-            <div>
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="w-full bg-[#3a4095] text-white font-semibold py-3 px-6 rounded-lg hover:bg-[#2d3275] focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
-              </button>
-            </div>
-
-            {/* Status Message */}
-            {submitStatus && (
-              <div
-                className={`p-4 rounded-lg ${
-                  submitStatus.type === 'success'
-                    ? 'bg-green-50 text-green-800 border border-green-200'
-                    : 'bg-red-50 text-red-800 border border-red-200'
-                }`}
-              >
-                {submitStatus.message}
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
+                  placeholder="How should we address you?"
+                />
               </div>
-            )}
-          </div>
+            </div>
+
+            {/* Email */}
+            <div className="mb-6">
+              <label htmlFor="email" className="block text-sm font-medium text-black mb-2">
+                Email Address (optional)
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
+                  placeholder="We'll only use this to reply if needed"
+                />
+              </div>
+            </div>
+
+            {/* Message */}
+            <div className="mb-8">
+              <label htmlFor="message" className="block text-sm font-medium text-black mb-2">
+                Your Message <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute top-3 left-3 pointer-events-none">
+                  <MessageSquare className="h-5 w-5 text-gray-400" />
+                </div>
+                <textarea
+                  id="message"
+                  name="message"
+                  rows={5}
+                  value={formData.message}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#3a4095] focus:border-transparent"
+                  placeholder="Tell us what you think... we're listening!"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 px-6 bg-[#3a4095] text-white font-semibold rounded-xl hover:bg-[#2d3275] focus:outline-none focus:ring-2 focus:ring-[#3a4095] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></div>
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-5 w-5" />
+                  <span>Submit Feedback</span>
+                </>
+              )}
+            </button>
+
+            <p className="mt-6 text-center text-sm text-black">
+              Your message goes straight to our admin team. We read every submission.
+            </p>
+          </form>
+        )}
+
+        {/* Back link */}
+        <div className="text-center mt-10">
+          <button
+            onClick={() => router.back()}
+            className="text-[#3a4095] hover:underline font-medium"
+          >
+            ← Back to previous page
+          </button>
         </div>
       </div>
     </div>
-  );
+  )
 }

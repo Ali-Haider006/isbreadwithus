@@ -1,97 +1,702 @@
-  import Image from "next/image";
+'use client';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
-  export default function Home() {
+const supabase = createClient();
+
+// ── Icons ────────────────────────────────────────────────────────────────────
+
+const MenuIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+
+const XIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+const BookOpenIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 2L2 7v10c0 5.5 3.8 10.7 10 12 6.2-1.3 10-6.5 10-12V7l-10-5zm0 2.2l8 4v8.3c0 4.5-3.2 8.8-8 10-4.8-1.2-8-5.5-8-10V8.2l8-4z"/>
+    <path d="M8 10h8v2H8zm0 3h8v2H8z"/>
+  </svg>
+);
+
+const UsersIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" strokeWidth="2" />
+    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const CalendarIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
+    <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="2" />
+  </svg>
+);
+
+const MapPinIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+    <circle cx="12" cy="9" r="2.5" strokeWidth="2" />
+  </svg>
+);
+
+const ClockIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <circle cx="12" cy="12" r="10" strokeWidth="2" />
+    <path strokeWidth="2" strokeLinecap="round" d="M12 6v6l4 2" />
+  </svg>
+);
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type SiteConfig = {
+  site_name: string;
+  tagline: string;
+  hero_title: string;
+  hero_subtitle: string;
+  about_title: string;
+  about_description: string;
+  contact_email?: string;
+  instagram_url?: string;
+};
+
+type HeroStat = {
+  label: string;
+  value: string;
+  display_order: number;
+};
+
+type Meetup = {
+  id: string;
+  title: string;
+  description: string;
+  meetup_date: string;
+  meetup_time: string;
+  end_time?: string;
+  location?: string;
+  max_slots?: number;
+  payment_required?: boolean;
+  payment_amount?: number;
+  status: string;
+  registrationCount: number;
+};
+
+type Book = {
+  id: string;
+  title: string;
+  author: string;
+  description?: string;
+  genre?: string;
+  status: 'upcoming' | 'current' | 'completed';
+  start_date?: string;
+  end_date?: string;
+};
+
+type Guideline = {
+  title: string;
+  description: string;
+  display_order: number;
+};
+
+type FAQ = {
+  question: string;
+  answer: string;
+  category?: string;
+  display_order: number;
+};
+
+type NavItem = {
+  label: string;
+  href: string;
+  display_order: number;
+  is_button?: boolean;
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatTime(time?: string) {
+  if (!time) return '';
+  const [hourStr, minStr] = time.split(':');
+  const hour = parseInt(hourStr, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h = hour % 12 || 12;
+  return `${h}:${minStr} ${ampm}`;
+}
+
+// Parse date string without timezone shift
+function parseDate(dateStr: string) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getSlotsInfo(meetup: Meetup) {
+  if (!meetup.max_slots) return { text: 'Open registration', color: 'text-green-600', full: false };
+  const left = meetup.max_slots - meetup.registrationCount;
+  if (left <= 0) return { text: 'Fully booked', color: 'text-red-600', full: true };
+  if (left <= 3) return { text: `Only ${left} slot${left === 1 ? '' : 's'} left`, color: 'text-orange-500', full: false };
+  return { text: `${left} of ${meetup.max_slots} slots available`, color: 'text-green-600', full: false };
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+export default function BookClubLanding() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const [config, setConfig] = useState<SiteConfig | null>(null);
+  const [heroStats, setHeroStats] = useState<HeroStat[]>([]);
+  const [meetups, setMeetups] = useState<Meetup[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [guidelines, setGuidelines] = useState<Guideline[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [navItems, setNavItems] = useState<NavItem[]>([]);
+  const [meetupsLoading, setMeetupsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchAllData() {
+      try {
+        setLoading(true);
+
+        const [
+          { data: configData },
+          { data: statsData },
+          { data: navData },
+          { data: meetupsData },
+          { data: booksData },
+          { data: guidelinesData },
+          { data: faqsData },
+        ] = await Promise.all([
+          supabase.from('site_config').select('*').limit(1).single(),
+          supabase.from('hero_stats').select('*').eq('is_active', true).order('display_order', { ascending: true }),
+          supabase.from('navigation_items').select('*').eq('is_active', true).order('display_order', { ascending: true }),
+          supabase.from('meetups').select('*').eq('status', 'upcoming')
+            .gte('meetup_date', new Date().toISOString().split('T')[0])
+            .order('meetup_date', { ascending: true }).limit(6),
+          supabase.from('books').select('*').order('start_date', { ascending: false }),
+          supabase.from('guidelines').select('*').eq('is_active', true).order('display_order', { ascending: true }),
+          supabase.from('faqs').select('*').eq('is_active', true).order('display_order', { ascending: true }),
+        ]);
+
+        setConfig(configData);
+        setHeroStats(statsData || []);
+        setNavItems(navData || []);
+        setBooks(booksData || []);
+        setGuidelines(guidelinesData || []);
+        setFaqs(faqsData || []);
+
+        // Fetch registration counts for meetups
+        if (meetupsData && meetupsData.length > 0) {
+          const withCounts = await Promise.all(
+            meetupsData.map(async (meetup) => {
+              const { count } = await supabase
+                .from('meetup_registrations')
+                .select('*', { count: 'exact', head: true })
+                .eq('meetup_id', meetup.id)
+                .neq('payment_status', 'rejected');
+              return { ...meetup, registrationCount: count ?? 0 };
+            })
+          );
+          setMeetups(withCounts);
+        }
+        setMeetupsLoading(false);
+
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load content');
+        console.error(err);
+      } finally {
+        setLoading(false);
+        setMeetupsLoading(false);
+      }
+    }
+
+    fetchAllData();
+  }, []);
+
+  const displayNavItems = navItems.length > 0 ? navItems : [
+    { label: 'About',    href: '#about',    is_button: false, display_order: 1 },
+    { label: 'Meetups',  href: '#meetups',  is_button: false, display_order: 2 },
+    { label: 'Books',    href: '#books',    is_button: false, display_order: 3 },
+    { label: 'Feedback', href: '/feedback', is_button: false, display_order: 4 },
+  ];
+
+  const currentBooks  = books.filter(b => b.status === 'current');
+  const upcomingBooks = books.filter(b => b.status === 'upcoming');
+  const previousBooks = books.filter(b => b.status === 'completed');
+
+  if (loading) {
     return (
-      <main className="font-sans">
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3a4095]" />
+      </div>
+    );
+  }
 
-        {/* Hero */}
-        <section className="max-w-6xl mx-auto px-6 py-28 text-center">
-          <h1 className="font-serif text-4xl md:text-5xl font-bold">
-            A reading community in Islamabad
-          </h1>
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-600">
+        Error: {error}
+      </div>
+    );
+  }
 
-          <p className="mt-6 text-lg text-white/80 max-w-2xl mx-auto">
-            Monthly meetups • Thoughtful discussions • Like-minded readers
-          </p>
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
 
-          <div className="mt-10">
-            <a
-              href="#upcoming"
-              className="inline-block bg-white text-[#3A4095] px-8 py-4 rounded-xl text-sm font-medium tracking-wide hover:bg-white/90 transition"
-            >
-              View Upcoming Meetup
-            </a>
+      {/* ── Nav ─────────────────────────────────────────────────────────── */}
+      <nav className="bg-white shadow-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-3">
+              <div className="h-10 w-10 bg-[#3a4095] rounded-full flex items-center justify-center">
+                <BookOpenIcon className="h-6 w-6 text-white" />
+              </div>
+              <span className="text-xl font-bold text-[#3a4095]">
+                {config?.site_name || 'IsbReadWithUs'}
+              </span>
+            </div>
+
+            <div className="hidden md:flex items-center space-x-8">
+              {displayNavItems.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={
+                    item.is_button
+                      ? 'bg-[#3a4095] text-white px-6 py-2 rounded-full hover:bg-[#2d3275] transition'
+                      : 'text-gray-700 hover:text-[#3a4095] transition'
+                  }
+                >
+                  {item.label}
+                </a>
+              ))}
+              <a href="/sign-in" className="text-sm text-gray-600 hover:text-[#3a4095] transition">
+                Admin
+              </a>
+            </div>
+
+            <button className="md:hidden text-gray-700" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+              {mobileMenuOpen ? <XIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+            </button>
           </div>
-        </section>
 
-        {/* About */}
-        <section className="max-w-5xl mx-auto px-6 py-20">
-          <h2 className="font-serif text-3xl font-semibold mb-6">
-            About the Bookclub
-          </h2>
-          <p className="text-white/85 leading-relaxed text-lg">
-            Islamabad Read With Us is a community-led book club bringing readers
-            together for meaningful conversations, shared stories, and a love for books.
-          </p>
-        </section>
+          {mobileMenuOpen && (
+            <div className="md:hidden py-4 border-t">
+              <div className="flex flex-col space-y-3">
+                {displayNavItems.map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={
+                      item.is_button
+                        ? 'bg-[#3a4095] text-white px-6 py-2 rounded-full text-center'
+                        : 'text-gray-700 hover:text-[#3a4095] px-2 py-2'
+                    }
+                  >
+                    {item.label}
+                  </a>
+                ))}
+                <a href="/sign-in" className="text-sm text-gray-600 hover:text-[#3a4095] px-2 py-2">
+                  Admin Login
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
 
-        {/* How It Works */}
-        <section className="py-20 bg-white">
-          <div className="max-w-6xl mx-auto px-6">
-            <h2 className="font-serif text-3xl font-semibold text-center mb-12 text-[#1F1F1F]">
-              How It Works
-            </h2>
+      <main className="flex-grow">
 
+        {/* ── Hero ────────────────────────────────────────────────────────── */}
+        <div className="relative bg-gradient-to-br from-[#3a4095] to-[#5a60b5] text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
+            <div className="grid md:grid-cols-2 gap-12 items-center">
+              <div className="space-y-6">
+                <div className="inline-block bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-sm">
+                  📚 {config?.tagline || 'Join Our Reading Community'}
+                </div>
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
+                  {config?.hero_title || 'Where Stories Come Alive'}
+                </h1>
+                <p className="text-lg sm:text-xl text-white/90">
+                  {config?.hero_subtitle || 'Join IsbReadWithUs for engaging discussions, meaningful connections, and a shared love of literature.'}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                  <a href="#meetups" className="bg-white text-[#3a4095] px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition text-center">
+                    View Meetups
+                  </a>
+                  <a href="#about" className="border-2 border-white text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition text-center">
+                    Learn More
+                  </a>
+                </div>
+              </div>
+
+              <div className="hidden md:block">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-white/5 backdrop-blur-sm rounded-3xl transform rotate-3" />
+                  <div className="relative bg-white/10 backdrop-blur-sm p-8 rounded-3xl">
+                    <div className="grid grid-cols-2 gap-4">
+                      {heroStats.slice(0, 3).map((stat, i) => (
+                        <div key={i} className={`bg-white/20 p-6 rounded-2xl text-center ${i === 2 ? 'col-span-2' : ''}`}>
+                          {i === 0 && <BookOpenIcon className="h-10 w-10 mx-auto mb-3" />}
+                          {i === 1 && <UsersIcon className="h-10 w-10 mx-auto mb-3" />}
+                          {i === 2 && <CalendarIcon className="h-10 w-10 mx-auto mb-3" />}
+                          <div className="text-3xl font-bold">{stat.value}</div>
+                          <div className="text-sm">{stat.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="absolute bottom-0 left-0 right-0">
+            <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-16 fill-gray-50">
+              <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* ── About ───────────────────────────────────────────────────────── */}
+        <section id="about" className="py-16 sm:py-24 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                {config?.about_title || 'About IsbReadWithUs'}
+              </h2>
+              <p className="text-lg text-gray-600">
+                {config?.about_description || "We're a vibrant community of book lovers who believe that reading is better together."}
+              </p>
+            </div>
             <div className="grid md:grid-cols-3 gap-8">
               {[
-                "Register for the meetup",
-                "Read the selected book",
-                "Join the discussion in person",
-              ].map((step, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl p-8 text-center shadow-sm border border-gray-100"
-                >
-                  <span className="font-serif text-2xl text-[#3A4095]">
-                    {i + 1}
-                  </span>
-                  <p className="mt-4 text-gray-700">{step}</p>
+                { icon: BookOpenIcon, title: 'Diverse Selections', desc: 'From classic literature to contemporary fiction, we explore books across all genres.' },
+                { icon: UsersIcon,    title: 'Inclusive Community', desc: 'All readers welcome. We celebrate different perspectives and interpretations.' },
+                { icon: CalendarIcon, title: 'Regular Meetups',    desc: 'Monthly gatherings in cozy cafes and libraries around Islamabad.' },
+              ].map(({ icon: Icon, title, desc }) => (
+                <div key={title} className="text-center p-6">
+                  <div className="bg-[#3a4095]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Icon className="h-8 w-8 text-[#3a4095]" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{title}</h3>
+                  <p className="text-gray-600">{desc}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Upcoming Meetup */}
-        <section id="upcoming" className="max-w-5xl mx-auto px-6 py-20">
-          <h2 className="font-serif text-3xl font-semibold mb-6">
-            Upcoming Meetup
-          </h2>
+        {/* ── Meetups ─────────────────────────────────────────────────────── */}
+        <section id="meetups" className="py-16 sm:py-24 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Upcoming Meetups</h2>
+              <p className="text-lg text-gray-600">Join us for our next literary adventure.</p>
+            </div>
 
-          <div className="bg-white rounded-2xl p-8 text-[#1F1F1F] flex flex-col md:flex-row items-center gap-6">
-            <Image src="/currRead.png" alt="Fallen Leaves by Will Durant" width={160} height={240} className="rounded" />
+            {meetupsLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#3a4095]" />
+              </div>
+            ) : meetups.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 bg-[#3a4095]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CalendarIcon className="h-8 w-8 text-[#3a4095]" />
+                </div>
+                <p className="text-gray-500 text-lg">No upcoming meetups at the moment.</p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Follow us on{' '}
+                  <a
+                    href={config?.instagram_url || 'https://www.instagram.com/islamabadreadswithus/'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#3a4095] underline"
+                  >
+                    Instagram
+                  </a>
+                  {' '}to get notified of new events.
+                </p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {meetups.map((meetup) => {
+                  const date  = parseDate(meetup.meetup_date);
+                  const slots = getSlotsInfo(meetup);
+                  const almostFull = !slots.full && meetup.max_slots != null &&
+                    (meetup.max_slots - meetup.registrationCount) <= 3;
 
-            <div className="flex-1">
-              <p className="italic font-serif text-lg">Fallen Leaves by Will Durant</p>
-              <p className="mt-2 text-gray-600">Date &amp; location to be decided</p>
-              <p className="mt-4 text-sm text-gray-500">Limited seats available</p>
+                  return (
+                    <div key={meetup.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow flex flex-col">
+                      {/* Date banner */}
+                      <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] p-6 text-white relative">
+                        <div className="text-sm font-medium opacity-80 mb-1">
+                          {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </div>
+                        <div className="text-5xl font-bold leading-none">
+                          {String(date.getDate()).padStart(2, '0')}
+                        </div>
+                        <div className="text-sm opacity-80 mt-1">
+                          {date.toLocaleString('default', { weekday: 'long' })}
+                        </div>
+
+                        {slots.full && (
+                          <div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                            Fully Booked
+                          </div>
+                        )}
+                        {almostFull && (
+                          <div className="absolute top-4 right-4 bg-orange-400 text-white text-xs font-bold px-3 py-1 rounded-full">
+                            Almost Full
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Body */}
+                      <div className="p-6 flex flex-col flex-grow">
+                        <h3 className="text-xl font-semibold text-gray-900 mb-2 leading-tight">{meetup.title}</h3>
+                        {meetup.description && (
+                          <p className="text-gray-500 text-sm mb-4 line-clamp-2">{meetup.description}</p>
+                        )}
+
+                        <div className="space-y-2 text-sm text-gray-600 mb-5">
+                          <div className="flex items-center gap-2">
+                            <ClockIcon className="h-4 w-4 text-[#3a4095] flex-shrink-0" />
+                            <span>
+                              {formatTime(meetup.meetup_time)}
+                              {meetup.end_time && ` – ${formatTime(meetup.end_time)}`}
+                            </span>
+                          </div>
+
+                          {meetup.location && (
+                            <div className="flex items-center gap-2">
+                              <MapPinIcon className="h-4 w-4 text-[#3a4095] flex-shrink-0" />
+                              <span className="truncate">{meetup.location}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <UsersIcon className="h-4 w-4 text-[#3a4095] flex-shrink-0" />
+                            <span className={`font-medium ${slots.color}`}>{slots.text}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                              {meetup.payment_required ? `PKR ${meetup.payment_amount || 0}` : 'Free'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-auto">
+                          {slots.full ? (
+                            <button disabled className="w-full bg-gray-200 text-gray-400 px-4 py-2.5 rounded-full font-semibold cursor-not-allowed">
+                              Fully Booked
+                            </button>
+                          ) : (
+                            <a
+                              href={`/meetups/${meetup.id}`}
+                              className="block w-full bg-[#3a4095] text-white text-center px-4 py-2.5 rounded-full font-semibold hover:bg-[#2d3275] transition"
+                            >
+                              Register Now
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── Books ───────────────────────────────────────────────────────── */}
+        <section id="books" className="py-16 sm:py-24 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Our Reading List</h2>
+              <p className="text-lg text-gray-600">Explore books we&apos;ve read together and what&apos;s coming next.</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8 mb-12">
+              {currentBooks[0] && (
+                <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] rounded-2xl p-8 text-white">
+                  <div className="text-sm font-semibold mb-2 opacity-90">Currently Reading</div>
+                  <h3 className="text-2xl font-bold mb-1">{currentBooks[0].title}</h3>
+                  <p className="text-sm opacity-80 mb-4">by {currentBooks[0].author}</p>
+                  <p className="mb-6 opacity-90">{currentBooks[0].description || 'No description available.'}</p>
+                  {currentBooks[0].genre && (
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{currentBooks[0].genre}</span>
+                  )}
+                </div>
+              )}
+
+              {upcomingBooks[0] && (
+                <div className="bg-gray-100 rounded-2xl p-8">
+                  <div className="text-sm font-semibold mb-2 text-[#3a4095]">Up Next</div>
+                  <h3 className="text-2xl font-bold mb-1 text-gray-900">{upcomingBooks[0].title}</h3>
+                  <p className="text-sm text-gray-500 mb-4">by {upcomingBooks[0].author}</p>
+                  <p className="mb-6 text-gray-600">{upcomingBooks[0].description || 'No description available.'}</p>
+                  {upcomingBooks[0].genre && (
+                    <span className="bg-gray-200 px-3 py-1 rounded-full text-sm text-gray-700">{upcomingBooks[0].genre}</span>
+                  )}
+                </div>
+              )}
+
+              {!currentBooks[0] && !upcomingBooks[0] && (
+                <p className="col-span-2 text-center text-gray-500">No active books at the moment.</p>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Previously Read</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {previousBooks.length === 0 ? (
+                  <p className="col-span-full text-center text-gray-500">No previous books yet.</p>
+                ) : (
+                  previousBooks.map((book) => (
+                    <div key={book.id} className="bg-gray-50 rounded-lg p-4 hover:shadow-md transition">
+                      <div className="bg-[#3a4095] h-32 rounded-md mb-3 flex items-center justify-center">
+                        <BookOpenIcon className="h-8 w-8 text-white" />
+                      </div>
+                      <h4 className="font-semibold text-sm text-gray-900 mb-1 leading-tight">{book.title}</h4>
+                      <p className="text-xs text-gray-500">{book.author}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="py-10 text-center text-sm text-white/70">
-          <p>© Islamabad Read With Us</p>
-          <p className="mt-2">
-            <a
-              href="https://www.instagram.com/isbreadwithus/"
-              className="underline hover:text-white"
-            >
-              Instagram
-            </a>
-          </p>
-        </footer>
+        {/* ── Guidelines ──────────────────────────────────────────────────── */}
+        <section id="guidelines" className="py-16 sm:py-24 bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Community Guidelines</h2>
+              <p className="text-lg text-gray-600">Our guidelines ensure everyone feels welcome and respected.</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-lg p-8 space-y-6">
+              {guidelines.length === 0 ? (
+                <p className="text-gray-500 text-center">No guidelines available yet.</p>
+              ) : (
+                guidelines.map((g, i) => (
+                  <div key={i} className="border-l-4 border-[#3a4095] pl-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{g.title}</h3>
+                    <p className="text-gray-600">{g.description}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
 
+        {/* ── FAQ ─────────────────────────────────────────────────────────── */}
+        <section id="faq" className="py-16 sm:py-24 bg-white">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
+              <p className="text-lg text-gray-600">Everything you need to know about joining IsbReadWithUs.</p>
+            </div>
+            <div className="space-y-6">
+              {faqs.length === 0 ? (
+                <p className="text-center text-gray-500">No FAQs available yet.</p>
+              ) : (
+                faqs.map((faq, i) => (
+                  <div key={i} className="bg-gray-50 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{faq.question}</h3>
+                    <p className="text-gray-600">{faq.answer}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ── CTA ─────────────────────────────────────────────────────────── */}
+        <section className="py-16 sm:py-24 bg-gradient-to-br from-[#3a4095] to-[#5a60b5] text-white">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Start Your Reading Journey?</h2>
+            <p className="text-xl mb-8 text-white/90">Join our community today and discover your next favorite book.</p>
+            <a href="#meetups" className="inline-block bg-white text-[#3a4095] px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition">
+              View Upcoming Meetups
+            </a>
+          </div>
+        </section>
       </main>
-    );
-  }
+
+      {/* ── Footer ──────────────────────────────────────────────────────────── */}
+      <footer className="bg-[#3a4095] text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 bg-white/20 rounded-full flex items-center justify-center">
+                  <BookOpenIcon className="h-6 w-6 text-white" />
+                </div>
+                <span className="text-lg font-bold">{config?.site_name || 'IsbReadWithUs'}</span>
+              </div>
+              <p className="text-white/80 text-sm">Building a community of passionate readers in Islamabad.</p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Quick Links</h3>
+              <ul className="space-y-2 text-sm text-white/80">
+                {displayNavItems.slice(0, 4).map(item => (
+                  <li key={item.href}>
+                    <a href={item.href} className="hover:text-white transition">{item.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Community</h3>
+              <ul className="space-y-2 text-sm text-white/80">
+                <li><a href="/feedback"    className="hover:text-white transition">Give Feedback</a></li>
+                <li><a href="#guidelines"  className="hover:text-white transition">Guidelines</a></li>
+                <li><a href="#faq"         className="hover:text-white transition">FAQ</a></li>
+                <li><a href="/sign-in"     className="hover:text-white transition">Admin Portal</a></li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Connect With Us</h3>
+              <p className="text-white/80 text-sm">
+                <a
+                  href={config?.instagram_url || 'https://www.instagram.com/islamabadreadswithus/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition"
+                >
+                  Follow us on Instagram for updates and book recommendations!
+                </a>
+              </p>
+              {config?.contact_email && (
+                <a
+                  href={`mailto:${config.contact_email}`}
+                  className="text-white/80 hover:text-white text-sm mt-2 block transition"
+                >
+                  {config.contact_email}
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-white/20 mt-8 pt-8 text-center text-sm text-white/70">
+            <p>© {new Date().getFullYear()} {config?.site_name || 'IsbReadWithUs'} Book Club. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
