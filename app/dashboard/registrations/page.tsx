@@ -25,6 +25,7 @@ type Registration = {
     id: string
     title: string | null
     meetup_date: string | null
+    location: string | null
     payment_required: boolean | null
   } | null
 }
@@ -272,7 +273,7 @@ export default function RegistrationsDashboard() {
           id, full_name, email, phone, why_join,
           payment_status, payment_screenshot_url, created_at,
           meetup:meetups!meetup_id (
-            id, title, meetup_date, payment_required
+            id, title, meetup_date, location, payment_required
           )
         `)
         .order('created_at', { ascending: false })
@@ -317,6 +318,7 @@ export default function RegistrationsDashboard() {
             full_name: reg.full_name,
             meetup_title: reg.meetup?.title,
             meetup_date: reg.meetup?.meetup_date,
+            meetup_location: reg.meetup?.location,
             status: newStatus,
           }),
         })
