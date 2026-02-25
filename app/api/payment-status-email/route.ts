@@ -6,7 +6,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, full_name, meetup_title, meetup_date, status } = await req.json()
+    const { email, full_name, meetup_title, meetup_date, location, status } = await req.json()
 
     if (!email || !full_name || !meetup_title || !status) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -108,6 +108,8 @@ export async function POST(req: NextRequest) {
                               <p style="color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Meetup</p>
                               <p style="color:#3a4095;font-size:18px;font-weight:700;margin:0 0 6px;">${meetup_title}</p>
                               <p style="color:#6b7280;font-size:14px;margin:0;">📅 ${formattedDate}</p>
+                              <p style="padding:6px 0;color:#374151;font-size:14px;">${location}</p>
+
                             </td>
                           </tr>
                         </table>
