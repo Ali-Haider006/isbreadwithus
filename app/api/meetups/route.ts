@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
- const cookieStore = await cookies();
- const supabase = createClient(cookieStore);
+ const cookieStore = cookies();
+ const supabase = createClient(await cookieStore);
 
 export async function POST(request: NextRequest) {
   try {
