@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
- const cookieStore = await cookies();
- const supabase = createClient(cookieStore);
 
 export async function GET(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
     const { data, error } = await supabase
       .from('books')
       .select('*')
