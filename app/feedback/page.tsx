@@ -143,7 +143,7 @@ export default function FeedbackPage() {
                     }`}
                   >
                     <type.icon className={`h-7 w-7 mb-2 ${type.color}`} />
-                    <span className="text-sm font-medium text-center">{type.label}</span>
+                    <span className={`text-sm font-medium text-center ${type.color}`}>{type.label}</span>
                   </button>
                 ))}
               </div>

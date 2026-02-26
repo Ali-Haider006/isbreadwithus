@@ -55,6 +55,18 @@ const ClockIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const ChevronLeftIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
+  </svg>
+);
+
+const ChevronRightIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={className}>
+    <path strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+  </svg>
+);
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type SiteConfig = {
@@ -91,11 +103,11 @@ type Meetup = {
 
 type Book = {
   id: string;
-  title: string;
-  author: string;
-  description?: string;
-  genre?: string;
-  status: 'upcoming' | 'current' | 'completed';
+  title: string | null;
+  author: string | null;
+  description: string | null;
+  genre: string | null;
+  status?: 'upcoming' | 'current' | 'completed';
   start_date?: string;
   end_date?: string;
 };
@@ -131,7 +143,6 @@ function formatTime(time?: string) {
   return `${h}:${minStr} ${ampm}`;
 }
 
-// Parse date string without timezone shift
 function parseDate(dateStr: string) {
   const [year, month, day] = dateStr.split('-').map(Number);
   return new Date(year, month - 1, day);
@@ -143,6 +154,156 @@ function getSlotsInfo(meetup: Meetup) {
   if (left <= 0) return { text: 'Fully booked', color: 'text-red-600', full: true };
   if (left <= 3) return { text: `Only ${left} slot${left === 1 ? '' : 's'} left`, color: 'text-orange-500', full: false };
   return { text: `${left} of ${meetup.max_slots} slots available`, color: 'text-green-600', full: false };
+}
+
+// ── Book Carousel ────────────────────────────────────────────────────────────
+
+function BookCarousel({ books }: { books: Book[] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [direction, setDirection] = useState<'left' | 'right'>('right');
+  const total = books.length;
+
+  // Sort by start_date descending (latest first), fallback to original order
+  const sortedBooks = [...books].sort((a, b) => {
+    if (!a.start_date && !b.start_date) return 0;
+    if (!a.start_date) return 1;
+    if (!b.start_date) return -1;
+    return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+  });
+
+  function goTo(newIndex: number, dir: 'left' | 'right') {
+    if (animating || newIndex === activeIndex) return;
+    setDirection(dir);
+    setAnimating(true);
+    setTimeout(() => {
+      setActiveIndex(newIndex);
+      setAnimating(false);
+    }, 300);
+  }
+
+  const prev = () => goTo((activeIndex - 1 + total) % total, 'left');
+  const next = () => goTo((activeIndex + 1) % total, 'right');
+
+  // Auto-advance every 4 seconds
+  useEffect(() => {
+    if (total <= 1) return;
+    const id = setInterval(() => {
+      setDirection('right');
+      setAnimating(true);
+      setTimeout(() => {
+        setActiveIndex(i => (i + 1) % total);
+        setAnimating(false);
+      }, 300);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [total]);
+
+  if (total === 0) {
+    return (
+      <section id="books" className="py-16 sm:py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Our Reading List</h2>
+          <p className="text-gray-500 mt-6">No books added yet.</p>
+        </div>
+      </section>
+    );
+  }
+
+  const book = sortedBooks[activeIndex];
+
+  return (
+    <section id="books" className="pt-16 pb-10 sm:pt-24 sm:pb-12 bg-white">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <div className="text-center mb-10">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Our Reading List</h2>
+          <p className="text-lg text-gray-600">Books our community is reading and recommending.</p>
+        </div>
+
+        {/* Card + buttons row */}
+        <div className="flex items-center gap-4 sm:gap-6">
+          {/* Prev button */}
+          <button
+            onClick={prev}
+            className="flex-shrink-0 h-11 w-11 rounded-full bg-[#3a4095]/10 hover:bg-[#3a4095] text-[#3a4095] hover:text-white flex items-center justify-center transition-all duration-200 shadow-sm"
+            aria-label="Previous book"
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
+
+          {/* Card */}
+          <div className="flex-1">
+            <div
+              className="rounded-2xl overflow-hidden shadow-lg"
+              style={{
+                opacity: animating ? 0 : 1,
+                transform: animating
+                  ? `translateX(${direction === 'right' ? '-16px' : '16px'})`
+                  : 'translateX(0)',
+                transition: 'opacity 0.3s ease, transform 0.3s ease',
+              }}
+            >
+              {/* Cover */}
+              <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] h-52 sm:h-64 flex items-center justify-center relative">
+                <div
+                  className="absolute inset-0 opacity-10"
+                  style={{
+                    backgroundImage: 'repeating-linear-gradient(45deg, #fff 0, #fff 1px, transparent 0, transparent 50%)',
+                    backgroundSize: '10px 10px',
+                  }}
+                />
+                <BookOpenIcon className="h-16 w-16 text-white/70" />
+              </div>
+              {/* Info */}
+              <div className="bg-white p-5">
+                <h4 className="font-bold text-lg text-gray-900 leading-tight mb-1">
+                  {book.title || 'Untitled'}
+                </h4>
+                <p className="text-sm text-gray-500 mb-3">{book.author || 'Unknown author'}</p>
+                {book.genre && (
+                  <span className="inline-block text-xs bg-[#3a4095]/10 text-[#3a4095] px-2.5 py-0.5 rounded-full font-medium">
+                    {book.genre}
+                  </span>
+                )}
+                {book.description && (
+                  <p className="mt-3 text-sm text-gray-400 leading-relaxed line-clamp-3">{book.description}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Next button */}
+          <button
+            onClick={next}
+            className="flex-shrink-0 h-11 w-11 rounded-full bg-[#3a4095]/10 hover:bg-[#3a4095] text-[#3a4095] hover:text-white flex items-center justify-center transition-all duration-200 shadow-sm"
+            aria-label="Next book"
+          >
+            <ChevronRightIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Counter + dots */}
+        <div className="flex flex-col items-center gap-2 mt-4 mb-2">
+          <div className="flex gap-1.5">
+            {sortedBooks.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i, i > activeIndex ? 'right' : 'left')}
+                className={`rounded-full transition-all duration-300 ${
+                  i === activeIndex
+                    ? 'w-6 h-2.5 bg-[#3a4095]'
+                    : 'w-2.5 h-2.5 bg-[#3a4095]/25 hover:bg-[#3a4095]/50'
+                }`}
+                aria-label={`Go to book ${i + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -181,7 +342,7 @@ export default function BookClubLanding() {
           supabase.from('meetups').select('*').eq('status', 'upcoming')
             .gte('meetup_date', new Date().toISOString().split('T')[0])
             .order('meetup_date', { ascending: true }).limit(6),
-          supabase.from('books').select('*').order('start_date', { ascending: false }),
+          supabase.from('books').select('*').order('title'),
           supabase.from('guidelines').select('*').eq('is_active', true).order('display_order', { ascending: true }),
           supabase.from('faqs').select('*').eq('is_active', true).order('display_order', { ascending: true }),
         ]);
@@ -193,7 +354,6 @@ export default function BookClubLanding() {
         setGuidelines(guidelinesData || []);
         setFaqs(faqsData || []);
 
-        // Fetch registration counts for meetups
         if (meetupsData && meetupsData.length > 0) {
           const withCounts = await Promise.all(
             meetupsData.map(async (meetup) => {
@@ -227,10 +387,6 @@ export default function BookClubLanding() {
     { label: 'Books',    href: '#books',    is_button: false, display_order: 3 },
     { label: 'Feedback', href: '/feedback', is_button: false, display_order: 4 },
   ];
-
-  const currentBooks  = books.filter(b => b.status === 'current');
-  const upcomingBooks = books.filter(b => b.status === 'upcoming');
-  const previousBooks = books.filter(b => b.status === 'completed');
 
   if (loading) {
     return (
@@ -437,7 +593,6 @@ export default function BookClubLanding() {
 
                   return (
                     <div key={meetup.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow flex flex-col">
-                      {/* Date banner */}
                       <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] p-6 text-white relative">
                         <div className="text-sm font-medium opacity-80 mb-1">
                           {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
@@ -461,7 +616,6 @@ export default function BookClubLanding() {
                         )}
                       </div>
 
-                      {/* Body */}
                       <div className="p-6 flex flex-col flex-grow">
                         <h3 className="text-xl font-semibold text-gray-900 mb-2 leading-tight">{meetup.title}</h3>
                         {meetup.description && (
@@ -520,63 +674,7 @@ export default function BookClubLanding() {
         </section>
 
         {/* ── Books ───────────────────────────────────────────────────────── */}
-        <section id="books" className="py-16 sm:py-24 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Our Reading List</h2>
-              <p className="text-lg text-gray-600">Explore books we&apos;ve read together and what&apos;s coming next.</p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-8 mb-12">
-              {currentBooks[0] && (
-                <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] rounded-2xl p-8 text-white">
-                  <div className="text-sm font-semibold mb-2 opacity-90">Currently Reading</div>
-                  <h3 className="text-2xl font-bold mb-1">{currentBooks[0].title}</h3>
-                  <p className="text-sm opacity-80 mb-4">by {currentBooks[0].author}</p>
-                  <p className="mb-6 opacity-90">{currentBooks[0].description || 'No description available.'}</p>
-                  {currentBooks[0].genre && (
-                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{currentBooks[0].genre}</span>
-                  )}
-                </div>
-              )}
-
-              {upcomingBooks[0] && (
-                <div className="bg-gray-100 rounded-2xl p-8">
-                  <div className="text-sm font-semibold mb-2 text-[#3a4095]">Up Next</div>
-                  <h3 className="text-2xl font-bold mb-1 text-gray-900">{upcomingBooks[0].title}</h3>
-                  <p className="text-sm text-gray-500 mb-4">by {upcomingBooks[0].author}</p>
-                  <p className="mb-6 text-gray-600">{upcomingBooks[0].description || 'No description available.'}</p>
-                  {upcomingBooks[0].genre && (
-                    <span className="bg-gray-200 px-3 py-1 rounded-full text-sm text-gray-700">{upcomingBooks[0].genre}</span>
-                  )}
-                </div>
-              )}
-
-              {!currentBooks[0] && !upcomingBooks[0] && (
-                <p className="col-span-2 text-center text-gray-500">No active books at the moment.</p>
-              )}
-            </div>
-
-            <div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">Previously Read</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {previousBooks.length === 0 ? (
-                  <p className="col-span-full text-center text-gray-500">No previous books yet.</p>
-                ) : (
-                  previousBooks.map((book) => (
-                    <div key={book.id} className="bg-gray-50 rounded-lg p-4 hover:shadow-md transition">
-                      <div className="bg-[#3a4095] h-32 rounded-md mb-3 flex items-center justify-center">
-                        <BookOpenIcon className="h-8 w-8 text-white" />
-                      </div>
-                      <h4 className="font-semibold text-sm text-gray-900 mb-1 leading-tight">{book.title}</h4>
-                      <p className="text-xs text-gray-500">{book.author}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+        <BookCarousel books={books} />
 
         {/* ── Guidelines ──────────────────────────────────────────────────── */}
         <section id="guidelines" className="py-16 sm:py-24 bg-gray-50">
