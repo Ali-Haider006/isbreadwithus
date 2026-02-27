@@ -1,4 +1,4 @@
-// app/meetups/[id]/register/page.tsx
+// app/meetups/[id]/page.tsx
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -9,6 +9,13 @@ import {
   AlertCircle, ArrowLeft, CheckCircle, Upload, X,
   Building2, CreditCard, User
 } from 'lucide-react'
+
+interface Book {
+  id: string
+  title: string | null
+  author: string | null
+  cover_image_url: string | null
+}
 
 interface Meetup {
   id: string
@@ -21,6 +28,7 @@ interface Meetup {
   payment_amount: number | null
   status: string | null
   payment_recipient_id: string | null
+  book: Book | null
 }
 
 interface PaymentRecipient {
@@ -56,7 +64,7 @@ export default function MeetupRegistration() {
     async function fetchMeetup() {
       const { data, error } = await supabase
         .from('meetups')
-        .select('*')
+        .select('*, book:books!book_id(id, title, author, cover_image_url)')
         .eq('id', id)
         .single()
 
@@ -72,7 +80,7 @@ export default function MeetupRegistration() {
         return
       }
 
-      setMeetup(data)
+      setMeetup(data as Meetup)
 
       // Fetch registration count to calculate slots left
       if (data.max_slots) {
@@ -230,7 +238,6 @@ export default function MeetupRegistration() {
           }),
         })
       } catch {
-        // Email failure should never block the user — registration is already saved
         console.error('Email notification failed')
       }
 
@@ -303,6 +310,8 @@ export default function MeetupRegistration() {
     )
   }
 
+  const bookCover = meetup?.book?.cover_image_url ?? null
+
   // ── Main page ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
@@ -317,60 +326,120 @@ export default function MeetupRegistration() {
 
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
 
-          {/* Header */}
-          <div className="bg-[#3a4095] text-white p-8">
-            <div className="flex items-center gap-4 mb-4">
-              <BookOpen className="h-10 w-10" />
-              <h1 className="text-3xl font-bold">Registration</h1>
-            </div>
-            <h2 className="text-2xl font-semibold mb-2">{meetup!.title}</h2>
+          {/* ── Header ── */}
+          <div className="relative bg-gradient-to-br from-[#3a4095] to-[#5a60b5] text-white overflow-hidden">
 
-            <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6 text-white/90">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                <span>
-                  {meetup!.meetup_date
-                    ? new Date(meetup!.meetup_date).toLocaleDateString('en-US', {
-                        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-                      })
-                    : 'Date not set'}
-                  {meetup!.meetup_time && ` • ${meetup!.meetup_time}`}
-                </span>
-              </div>
+            {/* Blurred book cover as background — only when available */}
+            {bookCover && (
+              <img
+                src={bookCover}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover opacity-15 blur-sm scale-105"
+                onError={e => { e.currentTarget.style.display = 'none' }}
+              />
+            )}
 
-              <div className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                <span>{meetup!.location}</span>
-              </div>
+            <div className="relative z-10 p-8">
+              {/* Book row — only when a book is linked */}
+              {meetup!.book && (
+                <div className="flex items-center gap-4 mb-6">
+                  {/* Cover thumbnail */}
+                  {bookCover ? (
+                    <img
+                      src={bookCover}
+                      alt={meetup!.book.title || 'Book cover'}
+                      className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0 border border-white/20"
+                      onError={e => {
+                        e.currentTarget.style.display = 'none'
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null
+                        if (fallback) fallback.style.display = 'flex'
+                      }}
+                    />
+                  ) : null}
 
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                <span>
-                  {slotsLeft === null
-                    ? 'Unlimited slots'
-                    : slotsLeft <= 3
-                    ? `Only ${slotsLeft} slot${slotsLeft === 1 ? '' : 's'} left!`
-                    : `${slotsLeft} slots remaining`}
-                </span>
-                {slotsLeft !== null && slotsLeft <= 3 && (
-                  <span className="bg-orange-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    Almost full
+                  {/* Fallback icon — shown when no cover_image_url or image fails */}
+                  <div
+                    className="w-14 h-20 bg-white/20 rounded-lg items-center justify-center flex-shrink-0"
+                    style={{ display: bookCover ? 'none' : 'flex' }}
+                  >
+                    <BookOpen className="h-7 w-7 text-white/70" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-white/60 uppercase tracking-widest font-medium mb-0.5">
+                      Reading this month
+                    </p>
+                    <p className="font-semibold text-white leading-tight">
+                      {meetup!.book.title || 'Untitled'}
+                    </p>
+                    {meetup!.book.author && (
+                      <p className="text-sm text-white/70 mt-0.5">by {meetup!.book.author}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* No book linked — show original icon row */}
+              {!meetup!.book && (
+                <div className="flex items-center gap-4 mb-4">
+                  <BookOpen className="h-10 w-10" />
+                  <h1 className="text-3xl font-bold">Registration</h1>
+                </div>
+              )}
+
+              <h2 className="text-2xl font-semibold mb-2">{meetup!.title}</h2>
+
+              <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6 text-white/90">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  <span>
+                    {meetup!.meetup_date
+                      ? (() => {
+                          const [y, m, d] = meetup!.meetup_date.split('-').map(Number)
+                          return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+                            weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                          })
+                        })()
+                      : 'Date not set'}
+                    {meetup!.meetup_time && ` • ${meetup!.meetup_time}`}
                   </span>
-                )}
-              </div>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                <span>
-                  {meetup!.payment_required
-                    ? `PKR ${meetup!.payment_amount || 0} (payment required)`
-                    : 'Free entry'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  <span>{meetup!.location}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  <span>
+                    {slotsLeft === null
+                      ? 'Unlimited slots'
+                      : slotsLeft <= 3
+                      ? `Only ${slotsLeft} slot${slotsLeft === 1 ? '' : 's'} left!`
+                      : `${slotsLeft} slots remaining`}
+                  </span>
+                  {slotsLeft !== null && slotsLeft <= 3 && (
+                    <span className="bg-orange-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      Almost full
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  <span>
+                    {meetup!.payment_required
+                      ? `PKR ${meetup!.payment_amount || 0} (payment required)`
+                      : 'Free entry'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Success state */}
+          {/* ── Success state ── */}
           {success ? (
             <div className="p-10 text-center">
               <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">

@@ -99,14 +99,22 @@ type Meetup = {
   payment_amount?: number;
   status: string;
   registrationCount: number;
+  // joined book — null if no book linked, or book has no cover
+  book?: {
+    id: string;
+    title: string | null;
+    author: string | null;
+    cover_image_url: string | null;
+  } | null;
 };
 
 type Book = {
   id: string;
   title: string | null;
   author: string | null;
-  description: string | null;
-  genre: string | null;
+  description?: string | null;
+  genre?: string | null;
+  cover_image_url?: string | null; // null if not uploaded
   status?: 'upcoming' | 'current' | 'completed';
   start_date?: string;
   end_date?: string;
@@ -156,6 +164,34 @@ function getSlotsInfo(meetup: Meetup) {
   return { text: `${left} of ${meetup.max_slots} slots available`, color: 'text-green-600', full: false };
 }
 
+// ── Book Cover ── shared fallback component ───────────────────────────────────
+
+function BookCover({
+  src,
+  alt,
+  className,
+}: {
+  src?: string | null;
+  alt?: string;
+  className?: string;
+}) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={alt || 'Book cover'}
+        className={className}
+        onError={e => {
+          // If image fails to load, swap to fallback
+          (e.currentTarget as HTMLImageElement).style.display = 'none';
+          (e.currentTarget.nextSibling as HTMLElement)?.removeAttribute('hidden');
+        }}
+      />
+    );
+  }
+  return null;
+}
+
 // ── Book Carousel ────────────────────────────────────────────────────────────
 
 function BookCarousel({ books }: { books: Book[] }) {
@@ -164,7 +200,6 @@ function BookCarousel({ books }: { books: Book[] }) {
   const [direction, setDirection] = useState<'left' | 'right'>('right');
   const total = books.length;
 
-  // Sort by start_date descending (latest first), fallback to original order
   const sortedBooks = [...books].sort((a, b) => {
     if (!a.start_date && !b.start_date) return 0;
     if (!a.start_date) return 1;
@@ -185,7 +220,6 @@ function BookCarousel({ books }: { books: Book[] }) {
   const prev = () => goTo((activeIndex - 1 + total) % total, 'left');
   const next = () => goTo((activeIndex + 1) % total, 'right');
 
-  // Auto-advance every 4 seconds
   useEffect(() => {
     if (total <= 1) return;
     const id = setInterval(() => {
@@ -221,9 +255,8 @@ function BookCarousel({ books }: { books: Book[] }) {
           <p className="text-lg text-gray-600">Books our community is reading and recommending.</p>
         </div>
 
-        {/* Card + buttons row */}
         <div className="flex items-center gap-4 sm:gap-6">
-          {/* Prev button */}
+          {/* Prev */}
           <button
             onClick={prev}
             className="flex-shrink-0 h-11 w-11 rounded-full bg-[#3a4095]/10 hover:bg-[#3a4095] text-[#3a4095] hover:text-white flex items-center justify-center transition-all duration-200 shadow-sm"
@@ -244,17 +277,39 @@ function BookCarousel({ books }: { books: Book[] }) {
                 transition: 'opacity 0.3s ease, transform 0.3s ease',
               }}
             >
-              {/* Cover */}
-              <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] h-52 sm:h-64 flex items-center justify-center relative">
+              {/* ── Cover area ── */}
+              <div className="relative h-52 sm:h-64 bg-gradient-to-br from-[#3a4095] to-[#5a60b5] flex items-center justify-center overflow-hidden">
+                {book.cover_image_url ? (
+                  // Has a cover image
+                  <img
+                    src={book.cover_image_url}
+                    alt={book.title || 'Book cover'}
+                    className="h-full w-full object-cover"
+                    onError={e => {
+                      // Image failed — show fallback behind it
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.parentElement?.querySelector('.cover-fallback') as HTMLElement | null;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+
+                {/* Fallback — shown when no image OR image fails to load */}
                 <div
-                  className="absolute inset-0 opacity-10"
-                  style={{
-                    backgroundImage: 'repeating-linear-gradient(45deg, #fff 0, #fff 1px, transparent 0, transparent 50%)',
-                    backgroundSize: '10px 10px',
-                  }}
-                />
-                <BookOpenIcon className="h-16 w-16 text-white/70" />
+                  className="cover-fallback absolute inset-0 flex items-center justify-center"
+                  style={{ display: book.cover_image_url ? 'none' : 'flex' }}
+                >
+                  <div
+                    className="absolute inset-0 opacity-10"
+                    style={{
+                      backgroundImage: 'repeating-linear-gradient(45deg, #fff 0, #fff 1px, transparent 0, transparent 50%)',
+                      backgroundSize: '10px 10px',
+                    }}
+                  />
+                  <BookOpenIcon className="h-16 w-16 text-white/70 relative z-10" />
+                </div>
               </div>
+
               {/* Info */}
               <div className="bg-white p-5">
                 <h4 className="font-bold text-lg text-gray-900 leading-tight mb-1">
@@ -273,7 +328,7 @@ function BookCarousel({ books }: { books: Book[] }) {
             </div>
           </div>
 
-          {/* Next button */}
+          {/* Next */}
           <button
             onClick={next}
             className="flex-shrink-0 h-11 w-11 rounded-full bg-[#3a4095]/10 hover:bg-[#3a4095] text-[#3a4095] hover:text-white flex items-center justify-center transition-all duration-200 shadow-sm"
@@ -283,7 +338,7 @@ function BookCarousel({ books }: { books: Book[] }) {
           </button>
         </div>
 
-        {/* Counter + dots */}
+        {/* Dots */}
         <div className="flex flex-col items-center gap-2 mt-4 mb-2">
           <div className="flex gap-1.5">
             {sortedBooks.map((_, i) => (
@@ -339,9 +394,14 @@ export default function BookClubLanding() {
           supabase.from('site_config').select('*').limit(1).single(),
           supabase.from('hero_stats').select('*').eq('is_active', true).order('display_order', { ascending: true }),
           supabase.from('navigation_items').select('*').eq('is_active', true).order('display_order', { ascending: true }),
-          supabase.from('meetups').select('*').eq('status', 'upcoming')
+          // ↓ join books so we get cover_image_url per meetup
+          supabase
+            .from('meetups')
+            .select('*, book:books!book_id(id, title, author, cover_image_url)')
+            .eq('status', 'upcoming')
             .gte('meetup_date', new Date().toISOString().split('T')[0])
-            .order('meetup_date', { ascending: true }).limit(6),
+            .order('meetup_date', { ascending: true })
+            .limit(6),
           supabase.from('books').select('*').order('title'),
           supabase.from('guidelines').select('*').eq('is_active', true).order('display_order', { ascending: true }),
           supabase.from('faqs').select('*').eq('is_active', true).order('display_order', { ascending: true }),
@@ -365,7 +425,7 @@ export default function BookClubLanding() {
               return { ...meetup, registrationCount: count ?? 0 };
             })
           );
-          setMeetups(withCounts);
+          setMeetups(withCounts as Meetup[]);
         }
         setMeetupsLoading(false);
 
@@ -586,36 +646,61 @@ export default function BookClubLanding() {
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {meetups.map((meetup) => {
-                  const date  = parseDate(meetup.meetup_date);
-                  const slots = getSlotsInfo(meetup);
+                  const date     = parseDate(meetup.meetup_date);
+                  const slots    = getSlotsInfo(meetup);
                   const almostFull = !slots.full && meetup.max_slots != null &&
                     (meetup.max_slots - meetup.registrationCount) <= 3;
+                  const bookCover = meetup.book?.cover_image_url ?? null;
 
                   return (
                     <div key={meetup.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow flex flex-col">
-                      <div className="bg-gradient-to-br from-[#3a4095] to-[#5a60b5] p-6 text-white relative">
-                        <div className="text-sm font-medium opacity-80 mb-1">
-                          {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                        </div>
-                        <div className="text-5xl font-bold leading-none">
-                          {String(date.getDate()).padStart(2, '0')}
-                        </div>
-                        <div className="text-sm opacity-80 mt-1">
-                          {date.toLocaleString('default', { weekday: 'long' })}
+
+                      {/* ── Date / cover banner ── */}
+                      <div className="relative bg-gradient-to-br from-[#3a4095] to-[#5a60b5] text-white overflow-hidden">
+
+                        {/* Book cover — sits behind the date text when present */}
+                        {bookCover && (
+                          <img
+                            src={bookCover}
+                            alt={meetup.book?.title || 'Book cover'}
+                            className="absolute inset-0 w-full h-full object-cover opacity-20"
+                            onError={e => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        )}
+
+                        <div className="relative z-10 p-6">
+                          <div className="text-sm font-medium opacity-80 mb-1">
+                            {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                          </div>
+                          <div className="text-5xl font-bold leading-none">
+                            {String(date.getDate()).padStart(2, '0')}
+                          </div>
+                          <div className="text-sm opacity-80 mt-1">
+                            {date.toLocaleString('default', { weekday: 'long' })}
+                          </div>
+
+                          {/* Book title pill — only when book exists */}
+                          {meetup.book?.title && (
+                            <div className="mt-3 inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium">
+                              <BookOpenIcon className="h-3.5 w-3.5" />
+                              <span className="truncate max-w-[160px]">{meetup.book.title}</span>
+                            </div>
+                          )}
                         </div>
 
                         {slots.full && (
-                          <div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                          <div className="absolute top-4 right-4 z-20 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                             Fully Booked
                           </div>
                         )}
                         {almostFull && (
-                          <div className="absolute top-4 right-4 bg-orange-400 text-white text-xs font-bold px-3 py-1 rounded-full">
+                          <div className="absolute top-4 right-4 z-20 bg-orange-400 text-white text-xs font-bold px-3 py-1 rounded-full">
                             Almost Full
                           </div>
                         )}
                       </div>
 
+                      {/* ── Card body ── */}
                       <div className="p-6 flex flex-col flex-grow">
                         <h3 className="text-xl font-semibold text-gray-900 mb-2 leading-tight">{meetup.title}</h3>
                         {meetup.description && (
@@ -760,10 +845,10 @@ export default function BookClubLanding() {
             <div>
               <h3 className="font-semibold mb-4">Community</h3>
               <ul className="space-y-2 text-sm text-white/80">
-                <li><a href="/feedback"    className="hover:text-white transition">Give Feedback</a></li>
-                <li><a href="#guidelines"  className="hover:text-white transition">Guidelines</a></li>
-                <li><a href="#faq"         className="hover:text-white transition">FAQ</a></li>
-                <li><a href="/sign-in"     className="hover:text-white transition">Admin Portal</a></li>
+                <li><a href="/feedback"   className="hover:text-white transition">Give Feedback</a></li>
+                <li><a href="#guidelines" className="hover:text-white transition">Guidelines</a></li>
+                <li><a href="#faq"        className="hover:text-white transition">FAQ</a></li>
+                <li><a href="/sign-in"    className="hover:text-white transition">Admin Portal</a></li>
               </ul>
             </div>
 

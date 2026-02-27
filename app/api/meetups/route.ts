@@ -1,14 +1,13 @@
 // app/api/meetups/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
+
+const cookieStore = await cookies();
+const supabase = createClient(cookieStore);
 
 export async function POST(request: NextRequest) {
   try {
-    // ✅ MUST be inside the request handler
-    const cookieStore = cookies();
-    const supabase = createClient(await cookieStore);
-
     const body = await request.json();
     const {
       title,
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     let finalBookId = book_id;
 
-    // Create book if needed
+    // If creating a new book
     if (new_book && !book_id) {
       const { data: bookData, error: bookError } = await supabase
         .from('books')
@@ -38,6 +37,7 @@ export async function POST(request: NextRequest) {
           author: new_book.author,
           description: new_book.description,
           genre: new_book.genre,
+          cover_image_url: new_book.cover_image_url ?? null,
           start_date: new_book.start_date,
           end_date: new_book.end_date,
         })
@@ -88,11 +88,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown error';
-
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Internal server error', details: message },
+      { error: 'Internal server error', details: errorMessage },
       { status: 500 }
     );
   }

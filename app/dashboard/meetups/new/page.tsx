@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Plus } from 'lucide-react'
+import { Plus, Upload, X, CheckCircle } from 'lucide-react'
 
 interface Book {
   id: string
@@ -11,6 +11,7 @@ interface Book {
   author: string
   description: string | null
   genre: string | null
+  cover_image_url: string | null
 }
 
 interface PaymentRecipient {
@@ -23,6 +24,7 @@ interface PaymentRecipient {
 export default function NewMeetup() {
   const router = useRouter()
   const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     title: '',
@@ -45,6 +47,9 @@ export default function NewMeetup() {
     genre: '',
   })
 
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null)
+
   const [books, setBooks] = useState<Book[]>([])
   const [booksError, setBooksError] = useState<string | null>(null)
   const [paymentRecipients, setPaymentRecipients] = useState<PaymentRecipient[]>([])
@@ -65,12 +70,8 @@ export default function NewMeetup() {
       .select('*')
       .order('title', { ascending: true })
 
-    if (error) {
-      setBooksError(error.message)
-    } else if (data) {
-      setBooks(data)
-      setBooksError(null)
-    }
+    if (error) setBooksError(error.message)
+    else if (data) { setBooks(data); setBooksError(null) }
   }
 
   const fetchPaymentRecipients = async () => {
@@ -79,19 +80,39 @@ export default function NewMeetup() {
       .select('*')
       .order('recipient_name', { ascending: true })
 
-    if (error) {
-      setRecipientsError(error.message)
-    } else if (data) {
-      setPaymentRecipients(data)
-      setRecipientsError(null)
-    }
+    if (error) setRecipientsError(error.message)
+    else if (data) { setPaymentRecipients(data); setRecipientsError(null) }
   }
 
   const handleRecipientChange = (recipientId: string) => {
     setForm({ ...form, payment_recipient_id: recipientId })
-    
-    const recipient = paymentRecipients.find(r => r.id === recipientId)
-    setSelectedRecipient(recipient || null)
+    setSelectedRecipient(paymentRecipients.find(r => r.id === recipientId) || null)
+  }
+
+  const handleCoverImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file (JPG, PNG, etc.)')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be smaller than 5MB')
+      return
+    }
+
+    setCoverImageFile(file)
+    setError(null)
+    const reader = new FileReader()
+    reader.onloadend = () => setCoverImagePreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const removeCoverImage = () => {
+    setCoverImageFile(null)
+    setCoverImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,16 +121,35 @@ export default function NewMeetup() {
     setError(null)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/admin/sign-in')
-      return
-    }
+    if (!user) { router.push('/admin/sign-in'); return }
 
     try {
       let finalBookId = form.book_id
 
       // If creating a new book
       if (showNewBookForm && !form.book_id) {
+        // 1. Upload cover image first if provided
+        let cover_image_url: string | null = null
+
+        if (coverImageFile) {
+          const ext = coverImageFile.name.split('.').pop()
+          const fileName = `${Date.now()}_${newBookData.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${ext}`
+
+          const { error: uploadError } = await supabase.storage
+            .from('books-images')
+            .upload(fileName, coverImageFile, { upsert: false })
+
+          if (uploadError) {
+            setError(`Failed to upload cover image: ${uploadError.message}`)
+            setLoading(false)
+            return
+          }
+
+          const { data: urlData } = supabase.storage.from('books-images').getPublicUrl(fileName)
+          cover_image_url = urlData.publicUrl
+        }
+
+        // 2. Insert book with cover_image_url
         const { data: bookData, error: bookError } = await supabase
           .from('books')
           .insert({
@@ -117,6 +157,7 @@ export default function NewMeetup() {
             author: newBookData.author,
             description: newBookData.description || null,
             genre: newBookData.genre || null,
+            cover_image_url,
           })
           .select()
           .single()
@@ -130,7 +171,7 @@ export default function NewMeetup() {
         finalBookId = bookData.id
       }
 
-      // Create meetup
+      // 3. Create meetup
       const { error: meetupError } = await supabase
         .from('meetups')
         .insert({
@@ -154,24 +195,15 @@ export default function NewMeetup() {
         router.push('/dashboard/meetups')
       }
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('An unexpected error occurred')
-      }
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleNewBookChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  const handleNewBookChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setNewBookData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
+    setNewBookData(prev => ({ ...prev, [name]: value }))
   }
 
   return (
@@ -181,7 +213,7 @@ export default function NewMeetup() {
           <h1 className="text-3xl font-bold text-white mb-2">Create New Meetup</h1>
           <p className="text-indigo-100">Fill in the details below to schedule a new book club meetup</p>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Meetup Details Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
@@ -194,7 +226,6 @@ export default function NewMeetup() {
               <h2 className="text-xl font-semibold text-gray-900">Meetup Details</h2>
             </div>
 
-            {/* title */}
             <div>
               <label className="block mb-2 font-medium text-gray-700">Title *</label>
               <input
@@ -206,7 +237,6 @@ export default function NewMeetup() {
               />
             </div>
 
-            {/* description */}
             <div>
               <label className="block mb-2 font-medium text-gray-700">Description</label>
               <textarea
@@ -218,7 +248,6 @@ export default function NewMeetup() {
               />
             </div>
 
-            {/* date + time */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block mb-2 font-medium text-gray-700">Date *</label>
@@ -241,7 +270,6 @@ export default function NewMeetup() {
               </div>
             </div>
 
-            {/* location */}
             <div>
               <label className="block mb-2 font-medium text-gray-700">Location *</label>
               <input
@@ -253,7 +281,6 @@ export default function NewMeetup() {
               />
             </div>
 
-            {/* max slots */}
             <div>
               <label className="block mb-2 font-medium text-gray-700">Maximum Attendees</label>
               <input
@@ -282,15 +309,13 @@ export default function NewMeetup() {
                 type="checkbox"
                 checked={form.payment_required}
                 onChange={e => {
-                  setForm({ 
-                    ...form, 
+                  setForm({
+                    ...form,
                     payment_required: e.target.checked,
                     payment_amount: e.target.checked ? form.payment_amount : 0,
                     payment_recipient_id: e.target.checked ? form.payment_recipient_id : '',
                   })
-                  if (!e.target.checked) {
-                    setSelectedRecipient(null)
-                  }
+                  if (!e.target.checked) setSelectedRecipient(null)
                 }}
                 className="h-5 w-5 text-[#3a4095] rounded focus:ring-2 focus:ring-[#3a4095] focus:ring-offset-2"
               />
@@ -328,12 +353,12 @@ export default function NewMeetup() {
                   )}
                   <select
                     value={form.payment_recipient_id}
-                    onChange={(e) => handleRecipientChange(e.target.value)}
+                    onChange={e => handleRecipientChange(e.target.value)}
                     required={form.payment_required}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent transition-all outline-none"
                   >
                     <option value="">Choose a recipient...</option>
-                    {paymentRecipients.map((recipient) => (
+                    {paymentRecipients.map(recipient => (
                       <option key={recipient.id} value={recipient.id}>
                         {recipient.recipient_name}
                       </option>
@@ -387,28 +412,18 @@ export default function NewMeetup() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowNewBookForm(false)
-                  setForm({ ...form, book_id: '' })
-                }}
+                onClick={() => { setShowNewBookForm(false); setForm({ ...form, book_id: '' }) }}
                 className={`py-3 px-4 rounded-lg font-medium transition-all ${
-                  !showNewBookForm
-                    ? 'bg-[#3a4095] text-white shadow-md'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  !showNewBookForm ? 'bg-[#3a4095] text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 Select Existing
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setShowNewBookForm(true)
-                  setForm({ ...form, book_id: '' })
-                }}
+                onClick={() => { setShowNewBookForm(true); setForm({ ...form, book_id: '' }) }}
                 className={`py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all ${
-                  showNewBookForm
-                    ? 'bg-[#3a4095] text-white shadow-md'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  showNewBookForm ? 'bg-[#3a4095] text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 <Plus className="h-4 w-4" />
@@ -416,6 +431,7 @@ export default function NewMeetup() {
               </button>
             </div>
 
+            {/* ── Select Existing ── */}
             {!showNewBookForm ? (
               <div>
                 <label className="block mb-2 font-medium text-gray-700">Select Book</label>
@@ -430,12 +446,12 @@ export default function NewMeetup() {
                 <select
                   name="book_id"
                   value={form.book_id}
-                  onChange={(e) => setForm({ ...form, book_id: e.target.value })}
+                  onChange={e => setForm({ ...form, book_id: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent transition-all outline-none"
                 >
                   <option value="">Choose a book (optional)...</option>
                   {books.length > 0 ? (
-                    books.map((book) => (
+                    books.map(book => (
                       <option key={book.id} value={book.id}>
                         {book.title} - {book.author}
                       </option>
@@ -444,8 +460,28 @@ export default function NewMeetup() {
                     <option disabled>No books available</option>
                   )}
                 </select>
+
+                {/* Cover preview for selected existing book */}
+                {form.book_id && (() => {
+                  const selected = books.find(b => b.id === form.book_id)
+                  return selected?.cover_image_url ? (
+                    <div className="mt-4 flex items-center gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <img
+                        src={selected.cover_image_url}
+                        alt={selected.title}
+                        className="w-12 h-16 object-cover rounded shadow flex-shrink-0"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">{selected.title}</p>
+                        <p className="text-xs text-gray-500">{selected.author}</p>
+                      </div>
+                    </div>
+                  ) : null
+                })()}
               </div>
+
             ) : (
+              /* ── Create New Book ── */
               <div className="space-y-4 bg-gray-50 rounded-lg p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -460,7 +496,6 @@ export default function NewMeetup() {
                       placeholder="Enter book title"
                     />
                   </div>
-
                   <div>
                     <label className="block mb-2 font-medium text-gray-700">Author *</label>
                     <input
@@ -498,11 +533,59 @@ export default function NewMeetup() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-[#3a4095] focus:border-transparent transition-all outline-none"
                   />
                 </div>
+
+                {/* Cover Image Upload */}
+                <div>
+                  <label className="block mb-1 font-medium text-gray-700">Book Cover Image</label>
+                  <p className="text-xs text-gray-400 mb-3">JPG, PNG up to 5MB</p>
+
+                  {coverImagePreview ? (
+                    <div className="flex items-start gap-4">
+                      <div className="relative">
+                        <img
+                          src={coverImagePreview}
+                          alt="Cover preview"
+                          className="w-28 h-40 object-cover rounded-lg shadow border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeCoverImage}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-green-600 mt-2">
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="break-all">{coverImageFile?.name}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#3a4095] hover:bg-indigo-50/30 transition-colors group"
+                    >
+                      <Upload className="h-7 w-7 text-gray-400 group-hover:text-[#3a4095] mx-auto mb-2 transition-colors" />
+                      <p className="text-sm font-medium text-gray-600 group-hover:text-[#3a4095] transition-colors">
+                        Click to upload cover image
+                      </p>
+                    </button>
+                  )}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverImageChange}
+                    className="hidden"
+                  />
+                </div>
               </div>
             )}
           </div>
 
-          {/* Submit Buttons */}
+          {/* Submit */}
           <div className="flex gap-4 pt-4">
             <button
               type="button"
@@ -519,14 +602,12 @@ export default function NewMeetup() {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                   Creating...
                 </span>
-              ) : (
-                'Create Meetup'
-              )}
+              ) : 'Create Meetup'}
             </button>
           </div>
 
