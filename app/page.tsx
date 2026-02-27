@@ -372,6 +372,7 @@ export default function BookClubLanding() {
   const [books, setBooks] = useState<Book[]>([]);
   const [guidelines, setGuidelines] = useState<Guideline[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [navItems, setNavItems] = useState<NavItem[]>([]);
   const [meetupsLoading, setMeetupsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -763,45 +764,74 @@ export default function BookClubLanding() {
 
         {/* ── Guidelines ──────────────────────────────────────────────────── */}
         <section id="guidelines" className="py-16 sm:py-24 bg-gray-50">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Community Guidelines</h2>
               <p className="text-lg text-gray-600">Our guidelines ensure everyone feels welcome and respected.</p>
             </div>
-            <div className="bg-white rounded-2xl shadow-lg p-8 space-y-6">
-              {guidelines.length === 0 ? (
-                <p className="text-gray-500 text-center">No guidelines available yet.</p>
-              ) : (
-                guidelines.map((g, i) => (
-                  <div key={i} className="border-l-4 border-[#3a4095] pl-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{g.title}</h3>
-                    <p className="text-gray-600">{g.description}</p>
+            {guidelines.length === 0 ? (
+              <p className="text-gray-500 text-center">No guidelines available yet.</p>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {guidelines.map((g, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex gap-4"
+                  >
+                    <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#3a4095] flex items-center justify-center text-white font-bold text-sm">
+                      {String(i + 1).padStart(2, '0')}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900 mb-1 leading-snug">{g.title}</h3>
+                      <p className="text-sm text-gray-500 leading-relaxed">{g.description}</p>
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
         {/* ── FAQ ─────────────────────────────────────────────────────────── */}
         <section id="faq" className="py-16 sm:py-24 bg-white">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
               <p className="text-lg text-gray-600">Everything you need to know about joining IsbReadWithUs.</p>
             </div>
-            <div className="space-y-6">
-              {faqs.length === 0 ? (
-                <p className="text-center text-gray-500">No FAQs available yet.</p>
-              ) : (
-                faqs.map((faq, i) => (
-                  <div key={i} className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{faq.question}</h3>
-                    <p className="text-gray-600">{faq.answer}</p>
+            {faqs.length === 0 ? (
+              <p className="text-center text-gray-500">No FAQs available yet.</p>
+            ) : (
+              <div className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                {faqs.map((faq, i) => (
+                  <div key={i} className="bg-white">
+                    <button
+                      onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                      className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-gray-50 transition-colors group"
+                    >
+                      <span className="font-semibold text-gray-900 pr-4 group-hover:text-[#3a4095] transition-colors">
+                        {faq.question}
+                      </span>
+                      <span
+                        className="flex-shrink-0 w-7 h-7 rounded-full bg-[#3a4095]/10 flex items-center justify-center transition-transform duration-300"
+                        style={{ transform: openFaq === i ? 'rotate(45deg)' : 'rotate(0deg)' }}
+                      >
+                        <svg className="h-3.5 w-3.5 text-[#3a4095]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </span>
+                    </button>
+                    {openFaq === i && (
+                      <div className="px-6 pb-5">
+                        <p className="text-gray-600 leading-relaxed text-sm border-t border-gray-100 pt-4">
+                          {faq.answer}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
