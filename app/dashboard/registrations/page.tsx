@@ -9,8 +9,13 @@ import {
   BookOpen, Users, CheckCircle, XCircle, Search,
   LayoutDashboard, Calendar, MessageSquare, Settings, LogOut,
   ChevronLeft, ChevronRight, X, ExternalLink, Image as ImageIcon,
-  Phone, Mail, User, Clock, CreditCard
+  Phone, Mail, User, Clock, CreditCard, AlertTriangle,
+  RotateCcw, Clock3, Ban, StickyNote
 } from 'lucide-react'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waitlisted' | 'cancelled'
 
 type Registration = {
   id: string
@@ -18,8 +23,10 @@ type Registration = {
   email: string | null
   phone: string | null
   why_join: string | null
-  payment_status: 'pending' | 'submitted' | 'verified' | 'rejected' | null
+  payment_status: PaymentStatus | null
   payment_screenshot_url: string | null
+  admin_notes: string | null
+  status_updated_at: string | null
   created_at: string
   meetup: {
     id: string
@@ -27,117 +34,176 @@ type Registration = {
     meetup_date: string | null
     location: string | null
     payment_required: boolean | null
+    max_slots: number | null
   } | null
 }
 
+// ── Status config ─────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<PaymentStatus, {
+  label: string
+  color: string
+  icon: React.ReactNode
+}> = {
+  pending:    { label: 'Pending',    color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: <Clock3 className="h-3 w-3" /> },
+  submitted:  { label: 'Submitted',  color: 'bg-blue-100 text-blue-800 border-blue-200',       icon: <ImageIcon className="h-3 w-3" /> },
+  verified:   { label: 'Verified',   color: 'bg-green-100 text-green-800 border-green-200',    icon: <CheckCircle className="h-3 w-3" /> },
+  rejected:   { label: 'Rejected',   color: 'bg-red-100 text-red-800 border-red-200',          icon: <XCircle className="h-3 w-3" /> },
+  waitlisted: { label: 'Waitlisted', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: <Clock className="h-3 w-3" /> },
+  cancelled:  { label: 'Cancelled',  color: 'bg-gray-100 text-gray-600 border-gray-200',       icon: <Ban className="h-3 w-3" /> },
+}
+
+function StatusBadge({ status }: { status: PaymentStatus | null }) {
+  const cfg = STATUS_CONFIG[status ?? 'pending']
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg.color}`}>
+      {cfg.icon}{cfg.label}
+    </span>
+  )
+}
+
+// ── Actions per status ────────────────────────────────────────────────────────
+type Action = 'verify' | 'reject' | 'waitlist' | 'cancel' | 'reopen'
+
+function getActions(status: PaymentStatus | null): Action[] {
+  switch (status) {
+    case 'pending':
+    case 'submitted':  return ['verify', 'waitlist', 'reject']
+    case 'verified':   return ['cancel']
+    case 'rejected':   return ['reopen']
+    case 'waitlisted': return ['verify', 'reject']
+    case 'cancelled':  return ['reopen']
+    default:           return []
+  }
+}
+
+const ACTION_CONFIG: Record<Action, {
+  label: string
+  shortLabel: string
+  color: string
+  icon: React.ReactNode
+  confirmMsg: string
+  needsSlotCheck: boolean
+}> = {
+  verify:   { label: 'Verify Payment',      shortLabel: 'Verify',    color: 'bg-green-600 hover:bg-green-700 text-white',   icon: <CheckCircle className="h-4 w-4" />, confirmMsg: 'Mark this registration as verified?',                                    needsSlotCheck: false },
+  reject:   { label: 'Reject',              shortLabel: 'Reject',    color: 'bg-red-500 hover:bg-red-600 text-white',       icon: <XCircle className="h-4 w-4" />,    confirmMsg: 'Reject this registration? The slot will open up for others.',            needsSlotCheck: false },
+  waitlist: { label: 'Move to Waitlist',    shortLabel: 'Waitlist',  color: 'bg-purple-600 hover:bg-purple-700 text-white', icon: <Clock className="h-4 w-4" />,      confirmMsg: 'Move this registration to the waitlist?',                               needsSlotCheck: false },
+  cancel:   { label: 'Cancel Registration', shortLabel: 'Cancel',    color: 'bg-gray-500 hover:bg-gray-600 text-white',     icon: <Ban className="h-4 w-4" />,        confirmMsg: 'Cancel this verified registration? The slot will open for others.',     needsSlotCheck: false },
+  reopen:   { label: 'Re-open for Review',  shortLabel: 'Re-open',   color: 'bg-indigo-600 hover:bg-indigo-700 text-white', icon: <RotateCcw className="h-4 w-4" />,  confirmMsg: 'Move back to pending for review?',                                      needsSlotCheck: true  },
+}
+
+// Email is sent only for these
+const SEND_EMAIL_FOR: Partial<Record<Action, true>> = { verify: true, reject: true }
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+
 function DetailPanel({
-  registration,
-  onClose,
-  onStatusChange,
-  statusChanging,
+  registration, onClose, onAction, acting, slotsLeft,
 }: {
   registration: Registration
   onClose: () => void
-  onStatusChange: (id: string, status: 'verified' | 'rejected') => Promise<void>
-  statusChanging: boolean
+  onAction: (id: string, action: Action, notes?: string) => Promise<void>
+  acting: boolean
+  slotsLeft: number | null
 }) {
-  const badge = getStatusBadge(registration.payment_status)
   const [imgError, setImgError] = useState(false)
+  const [notes, setNotes] = useState(registration.admin_notes || '')
+  const [notesChanged, setNotesChanged] = useState(false)
+  const [pendingAction, setPendingAction] = useState<Action | null>(null)
+  const [savingNotes, setSavingNotes] = useState(false)
+  const supabase = createClient()
+  const actions = getActions(registration.payment_status)
+  const isFull = slotsLeft !== null && slotsLeft <= 0
+
+  const saveNotes = async () => {
+    setSavingNotes(true)
+    await supabase.from('meetup_registrations').update({ admin_notes: notes || null }).eq('id', registration.id)
+    setSavingNotes(false)
+    setNotesChanged(false)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
       <div className="flex-1 bg-black/40" onClick={onClose} />
-
-      {/* Panel */}
       <div className="w-full max-w-md bg-white shadow-2xl flex flex-col overflow-hidden">
+
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-[#3a4095] text-white">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-[#3a4095] text-white flex-shrink-0">
           <h2 className="text-lg font-semibold">Registration Details</h2>
           <button onClick={onClose} className="hover:bg-indigo-700 rounded-full p-1 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Status badge */}
-          <div className="flex items-center justify-between">
-            <span className={`px-3 py-1 text-sm font-semibold rounded-full ${badge.color}`}>
-              {badge.label}
-            </span>
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* Status row */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <StatusBadge status={registration.payment_status} />
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
-              {new Date(registration.created_at).toLocaleString('en-US', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })}
+              {new Date(registration.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
           </div>
+
+          {/* Status updated at */}
+          {registration.status_updated_at && (
+            <p className="text-xs text-gray-400">
+              Status last changed:{' '}
+              {new Date(registration.status_updated_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+            </p>
+          )}
+
+          {/* Slot warning for reopen */}
+          {(registration.payment_status === 'rejected' || registration.payment_status === 'cancelled') && isFull && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-orange-700 leading-relaxed">
+                <strong>Heads up:</strong> This meetup is currently full. Re-opening this registration
+                will exceed the slot limit. You can still proceed if this person deserves priority.
+              </p>
+            </div>
+          )}
 
           {/* Personal info */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Registrant</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <User className="h-4 w-4 text-[#3a4095]" />
-              </div>
+            <Row icon={<User className="h-4 w-4 text-[#3a4095]" />}>
               <span className="font-semibold text-gray-800">{registration.full_name || '—'}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <Mail className="h-4 w-4 text-[#3a4095]" />
-              </div>
-              <a href={`mailto:${registration.email}`} className="text-indigo-600 hover:underline text-sm">
-                {registration.email || '—'}
-              </a>
-            </div>
+            </Row>
+            <Row icon={<Mail className="h-4 w-4 text-[#3a4095]" />}>
+              <a href={`mailto:${registration.email}`} className="text-indigo-600 hover:underline text-sm">{registration.email || '—'}</a>
+            </Row>
             {registration.phone && (
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Phone className="h-4 w-4 text-[#3a4095]" />
-                </div>
-                <a href={`tel:${registration.phone}`} className="text-sm text-gray-700">
-                  {registration.phone}
-                </a>
-              </div>
+              <Row icon={<Phone className="h-4 w-4 text-[#3a4095]" />}>
+                <a href={`tel:${registration.phone}`} className="text-sm text-gray-700">{registration.phone}</a>
+              </Row>
             )}
           </div>
 
           {/* Meetup info */}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Meetup</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <Calendar className="h-4 w-4 text-[#3a4095]" />
-              </div>
+            <Row icon={<Calendar className="h-4 w-4 text-[#3a4095]" />}>
               <div>
-                <Link
-                  href={`/dashboard/meetups/${registration.meetup?.id}/edit`}
-                  className="font-medium text-indigo-600 hover:underline flex items-center gap-1"
-                >
-                  {registration.meetup?.title || '—'}
-                  <ExternalLink className="h-3.5 w-3.5" />
+                <Link href={`/dashboard/meetups/${registration.meetup?.id}/edit`} className="font-medium text-indigo-600 hover:underline flex items-center gap-1">
+                  {registration.meetup?.title || '—'}<ExternalLink className="h-3.5 w-3.5" />
                 </Link>
                 <p className="text-xs text-gray-500">
                   {registration.meetup?.meetup_date
-                    ? (() => {
-                        const [y, m, d] = registration.meetup.meetup_date.split('-').map(Number)
-                        return new Date(y, m - 1, d).toLocaleDateString('en-US', {
-                          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-                        })
-                      })()
+                    ? (() => { const [y,m,d] = registration.meetup.meetup_date.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) })()
                     : '—'}
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-3 mt-1">
-              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <CreditCard className="h-4 w-4 text-[#3a4095]" />
-              </div>
-              <span className="text-sm text-gray-700">
-                {registration.meetup?.payment_required ? 'Payment required' : 'Free entry'}
+            </Row>
+            <Row icon={<CreditCard className="h-4 w-4 text-[#3a4095]" />}>
+              <span className="text-sm text-gray-700">{registration.meetup?.payment_required ? 'Payment required' : 'Free entry'}</span>
+            </Row>
+            <Row icon={<Users className="h-4 w-4 text-[#3a4095]" />}>
+              <span className={`text-sm font-medium ${isFull ? 'text-red-600' : slotsLeft !== null && slotsLeft <= 3 ? 'text-orange-500' : 'text-green-600'}`}>
+                {slotsLeft === null ? 'Open (no slot limit)' : isFull ? 'Fully booked' : `${slotsLeft} slot${slotsLeft === 1 ? '' : 's'} remaining`}
               </span>
-            </div>
+            </Row>
           </div>
 
           {/* Why join */}
@@ -162,12 +228,8 @@ function DetailPanel({
                   />
                   <div className="px-4 py-2 bg-gray-50 border-t flex items-center justify-between">
                     <span className="text-xs text-gray-500">Payment proof</span>
-                    <a
-                      href={registration.payment_screenshot_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
-                    >
+                    <a href={registration.payment_screenshot_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
                       Open full size <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
@@ -175,42 +237,78 @@ function DetailPanel({
               ) : (
                 <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center text-gray-400">
                   <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">
-                    {imgError ? 'Failed to load screenshot' : 'No screenshot uploaded'}
-                  </p>
+                  <p className="text-sm">{imgError ? 'Failed to load screenshot' : 'No screenshot uploaded'}</p>
                 </div>
               )}
             </div>
           )}
+
+          {/* Admin notes */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <StickyNote className="h-4 w-4 text-amber-600" />
+              <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Admin Notes</h3>
+              <span className="text-xs text-amber-400 ml-auto">Internal only — never shown to user</span>
+            </div>
+            <textarea
+              value={notes}
+              onChange={e => { setNotes(e.target.value); setNotesChanged(true) }}
+              rows={3}
+              placeholder="e.g. User sent proof via WhatsApp, approved manually..."
+              className="w-full text-sm bg-white border border-amber-200 rounded-lg px-3 py-2 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+            />
+            {notesChanged && (
+              <button
+                onClick={saveNotes}
+                disabled={savingNotes}
+                className="mt-2 text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {savingNotes ? 'Saving...' : 'Save Notes'}
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Action buttons */}
-        {(registration.payment_status === 'pending' || registration.payment_status === 'submitted') && (
-          <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
-            <button
-              onClick={() => onStatusChange(registration.id, 'verified')}
-              disabled={statusChanging}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {statusChanging ? (
-                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <CheckCircle className="h-4 w-4" />
-              )}
-              Verify Payment
-            </button>
-            <button
-              onClick={() => onStatusChange(registration.id, 'rejected')}
-              disabled={statusChanging}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {statusChanging ? (
-                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <XCircle className="h-4 w-4" />
-              )}
-              Reject
-            </button>
+        {/* Action area */}
+        {actions.length > 0 && (
+          <div className="px-6 py-4 border-t bg-gray-50 flex-shrink-0">
+            {pendingAction ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm text-gray-700 font-medium">{ACTION_CONFIG[pendingAction].confirmMsg}</p>
+                {ACTION_CONFIG[pendingAction].needsSlotCheck && isFull && (
+                  <p className="text-xs text-orange-600 bg-orange-50 rounded-lg p-2 border border-orange-200">
+                    ⚠️ Meetup is full — this will exceed the slot limit.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { onAction(registration.id, pendingAction, notes); setPendingAction(null) }}
+                    disabled={acting}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${ACTION_CONFIG[pendingAction].color}`}
+                  >
+                    {acting ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : ACTION_CONFIG[pendingAction].icon}
+                    {acting ? 'Processing...' : `Yes, ${ACTION_CONFIG[pendingAction].shortLabel}`}
+                  </button>
+                  <button onClick={() => setPendingAction(null)} className="flex-1 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={`flex gap-2 ${actions.length > 2 ? 'flex-col' : ''}`}>
+                {actions.map(action => (
+                  <button
+                    key={action}
+                    onClick={() => setPendingAction(action)}
+                    disabled={acting}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${ACTION_CONFIG[action].color}`}
+                  >
+                    {ACTION_CONFIG[action].icon}
+                    {ACTION_CONFIG[action].label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -218,52 +316,57 @@ function DetailPanel({
   )
 }
 
-function getStatusBadge(status: string | null) {
-  switch (status) {
-    case 'verified':  return { label: 'Verified',  color: 'bg-green-100 text-green-800' }
-    case 'pending':   return { label: 'Pending',   color: 'bg-yellow-100 text-yellow-800' }
-    case 'submitted': return { label: 'Submitted', color: 'bg-blue-100 text-blue-800' }
-    case 'rejected':  return { label: 'Rejected',  color: 'bg-red-100 text-red-800' }
-    default:          return { label: 'Unknown',   color: 'bg-gray-100 text-gray-800' }
-  }
+// ── Shared row helper ─────────────────────────────────────────────────────────
+
+function Row({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">{icon}</div>
+      <div>{children}</div>
+    </div>
+  )
 }
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function RegistrationsDashboard() {
   const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [slotCounts, setSlotCounts] = useState<Record<string, number>>({})
   const [meetupFilter, setMeetupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedReg, setSelectedReg] = useState<Registration | null>(null)
-  const [statusChanging, setStatusChanging] = useState(false)
+  const [acting, setActing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
+    setTimeout(() => setToast(null), 4500)
   }
 
-  const filtered = useMemo(() => {
-    let result = [...registrations]
-    if (meetupFilter !== 'all') result = result.filter(r => r.meetup?.id === meetupFilter)
-    if (statusFilter !== 'all') result = result.filter(r => r.payment_status === statusFilter)
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(r =>
-        r.full_name?.toLowerCase().includes(term) ||
-        r.email?.toLowerCase().includes(term) ||
-        r.phone?.toLowerCase().includes(term) ||
-        r.meetup?.title?.toLowerCase().includes(term)
-      )
-    }
-    return result
-  }, [meetupFilter, statusFilter, searchTerm, registrations])
+  // ── Load ────────────────────────────────────────────────────────────────────
+  const refreshSlots = async (regs: Registration[]) => {
+    const meetupIds = [...new Set(regs.map(r => r.meetup?.id).filter(Boolean))] as string[]
+    const counts: Record<string, number> = {}
+    await Promise.all(meetupIds.map(async mid => {
+      const meetup = regs.find(r => r.meetup?.id === mid)?.meetup
+      if (!meetup?.max_slots) return
+      const { count } = await supabase
+        .from('meetup_registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('meetup_id', mid)
+        .in('payment_status', ['pending', 'submitted', 'verified', 'waitlisted'])
+      counts[mid] = meetup.max_slots - (count ?? 0)
+    }))
+    setSlotCounts(counts)
+  }
 
   useEffect(() => {
-    const checkAuthAndLoad = async () => {
+    const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/admin/sign-in'); return }
 
@@ -271,78 +374,109 @@ export default function RegistrationsDashboard() {
         .from('meetup_registrations')
         .select(`
           id, full_name, email, phone, why_join,
-          payment_status, payment_screenshot_url, created_at,
+          payment_status, payment_screenshot_url,
+          admin_notes, status_updated_at, created_at,
           meetup:meetups!meetup_id (
-            id, title, meetup_date, location, payment_required
+            id, title, meetup_date, location, payment_required, max_slots
           )
         `)
         .order('created_at', { ascending: false })
 
-      if (error) console.error('Error loading registrations:', error)
-      else setRegistrations((data as unknown) as Registration[] || [])
+      if (error) { console.error(error); setLoading(false); return }
+      const regs = (data as unknown as Registration[]) || []
+      setRegistrations(regs)
+      await refreshSlots(regs)
       setLoading(false)
     }
-    checkAuthAndLoad()
-  }, [router, supabase])
+    load()
+  }, [router])
 
-  const handleStatusChange = async (id: string, newStatus: 'verified' | 'rejected') => {
-    if (!confirm(`Are you sure you want to mark this registration as ${newStatus}?`)) return
+  // ── Action handler ──────────────────────────────────────────────────────────
+  const handleAction = async (id: string, action: Action, notes?: string) => {
+    setActing(true)
 
-    setStatusChanging(true)
+    const statusMap: Record<Action, PaymentStatus> = {
+      verify: 'verified', reject: 'rejected', waitlist: 'waitlisted',
+      cancel: 'cancelled', reopen: 'pending',
+    }
+    const newStatus = statusMap[action]
 
-    // 1. Update status in DB
     const { error } = await supabase
       .from('meetup_registrations')
-      .update({ payment_status: newStatus })
+      .update({
+        payment_status: newStatus,
+        status_updated_at: new Date().toISOString(),
+        ...(notes !== undefined ? { admin_notes: notes || null } : {}),
+      })
       .eq('id', id)
 
-    if (error) {
-      showToast('Failed to update status. Please try again.', 'error')
-      setStatusChanging(false)
-      return
-    }
+    if (error) { showToast('Failed to update status.', 'error'); setActing(false); return }
 
-    // 2. Update local state
-    setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: newStatus } : r))
-    setSelectedReg(prev => prev?.id === id ? { ...prev, payment_status: newStatus } : prev)
+    // Update local state
+    const updatedRegs = registrations.map(r =>
+      r.id === id ? { ...r, payment_status: newStatus, status_updated_at: new Date().toISOString(), admin_notes: notes ?? r.admin_notes } : r
+    )
+    setRegistrations(updatedRegs)
+    setSelectedReg(prev => prev?.id === id ? { ...prev, payment_status: newStatus, status_updated_at: new Date().toISOString() } : prev)
+    await refreshSlots(updatedRegs)
 
-    // 3. Send status email
+    // Send email
     const reg = registrations.find(r => r.id === id)
-    if (reg?.email) {
+    if (action in SEND_EMAIL_FOR && reg?.email) {
       try {
         await fetch('/api/payment-status-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: reg.email,
-            full_name: reg.full_name,
-            meetup_title: reg.meetup?.title,
-            meetup_date: reg.meetup?.meetup_date,
-            meetup_location: reg.meetup?.location,
-            status: newStatus,
+            email: reg.email, full_name: reg.full_name,
+            meetup_title: reg.meetup?.title, meetup_date: reg.meetup?.meetup_date,
+            meetup_location: reg.meetup?.location, status: newStatus,
           }),
         })
         showToast(
-          newStatus === 'verified'
-            ? `Payment verified and confirmation email sent to ${reg.email}`
-            : `Registration rejected and email sent to ${reg.email}`,
+          action === 'verify' ? `Verified — confirmation sent to ${reg.email}` : `Rejected — email sent to ${reg.email}`,
           'success'
         )
       } catch {
-        // Email failure doesn't undo the status change
-        showToast(`Status updated but email notification failed.`, 'error')
-        console.error('Status email failed')
+        showToast('Status updated but email failed.', 'error')
       }
     } else {
-      showToast(`Status updated to ${newStatus}.`, 'success')
+      const msgs: Record<Action, string> = {
+        verify: 'Payment verified.', reject: 'Registration rejected.',
+        waitlist: 'Moved to waitlist.', cancel: 'Registration cancelled.',
+        reopen: 'Re-opened for review — status set to pending.',
+      }
+      showToast(msgs[action], 'success')
     }
 
-    setStatusChanging(false)
+    setActing(false)
   }
+
+  // ── Filtering ───────────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    let r = [...registrations]
+    if (meetupFilter !== 'all') r = r.filter(x => x.meetup?.id === meetupFilter)
+    if (statusFilter !== 'all') r = r.filter(x => x.payment_status === statusFilter)
+    if (searchTerm.trim()) {
+      const t = searchTerm.toLowerCase()
+      r = r.filter(x =>
+        x.full_name?.toLowerCase().includes(t) || x.email?.toLowerCase().includes(t) ||
+        x.phone?.toLowerCase().includes(t) || x.meetup?.title?.toLowerCase().includes(t) ||
+        x.admin_notes?.toLowerCase().includes(t)
+      )
+    }
+    return r
+  }, [meetupFilter, statusFilter, searchTerm, registrations])
 
   const uniqueMeetups = Array.from(
     new Map(registrations.map(r => [r.meetup?.id, r.meetup])).values()
   ).filter((m): m is NonNullable<typeof m> => m !== null)
+
+  const summary = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const r of registrations) { const s = r.payment_status ?? 'unknown'; c[s] = (c[s] || 0) + 1 }
+    return c
+  }, [registrations])
 
   if (loading) {
     return (
@@ -355,32 +489,27 @@ export default function RegistrationsDashboard() {
   return (
     <div className="flex h-screen bg-gray-100">
 
-      {/* Toast notification */}
+      {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 transition-all ${
+        <div className={`fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 max-w-sm ${
           toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-500 text-white'
         }`}>
-          {toast.type === 'success' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {toast.type === 'success' ? <CheckCircle className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
           {toast.message}
         </div>
       )}
 
       {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#3a4095] transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:relative lg:translate-x-0 transition duration-300`}
-      >
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#3a4095] transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 transition duration-300 flex-shrink-0`}>
         <div className="p-6 border-b border-indigo-600 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <BookOpen className="h-8 w-8 text-white" />
-            <span className="text-xl font-bold text-white">IsBreadWithUs</span>
+            <span className="text-xl font-bold text-white">IsbReadWithUs</span>
           </div>
           <button className="lg:hidden text-white" onClick={() => setSidebarOpen(false)}>
             <ChevronLeft className="h-6 w-6" />
           </button>
         </div>
-
         <nav className="mt-6 px-4 space-y-1">
           {[
             { icon: LayoutDashboard, label: 'Dashboard',     href: '/dashboard' },
@@ -389,176 +518,134 @@ export default function RegistrationsDashboard() {
             { icon: MessageSquare,   label: 'Feedback',      href: '/dashboard/feedback' },
             { icon: Settings,        label: 'Settings',      href: '/dashboard/settings' },
           ].map(item => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center px-4 py-3 rounded-lg text-white hover:bg-indigo-700 ${item.active ? 'bg-indigo-700' : ''}`}
-            >
-              <item.icon className="h-5 w-5 mr-3" />
-              {item.label}
+            <Link key={item.label} href={item.href}
+              className={`flex items-center px-4 py-3 rounded-lg text-white hover:bg-indigo-700 transition-colors ${item.active ? 'bg-indigo-700' : ''}`}>
+              <item.icon className="h-5 w-5 mr-3" />{item.label}
             </Link>
           ))}
         </nav>
-
         <div className="absolute bottom-0 w-full p-4">
-          <button
-            onClick={() => supabase.auth.signOut().then(() => router.replace('/admin/sign-in'))}
-            className="flex items-center w-full px-4 py-3 text-white/90 hover:bg-indigo-800 rounded-lg"
-          >
-            <LogOut className="h-5 w-5 mr-3" />
-            Sign Out
+          <button onClick={() => supabase.auth.signOut().then(() => router.replace('/admin/sign-in'))}
+            className="flex items-center w-full px-4 py-3 text-white/90 hover:bg-indigo-800 rounded-lg">
+            <LogOut className="h-5 w-5 mr-3" />Sign Out
           </button>
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white shadow-sm">
+        <header className="bg-white shadow-sm flex-shrink-0">
           <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center lg:hidden">
-              <button onClick={() => setSidebarOpen(true)}>
+            <div className="flex items-center gap-3">
+              <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
                 <ChevronRight className="h-6 w-6 text-gray-600" />
               </button>
-              <span className="ml-4 text-lg font-semibold text-[#3a4095]">Registrations</span>
+              <h1 className="text-xl font-bold text-gray-900">Meetup Registrations</h1>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">Admin</p>
-            </div>
+            <span className="text-sm text-gray-400">Admin</span>
           </div>
         </header>
 
-        <main className="flex-1 p-6 overflow-auto">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-            <h1 className="text-2xl font-bold text-gray-900">Meetup Registrations</h1>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search name, email, phone..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-[#3a4095] w-64"
-              />
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-            </div>
+        <main className="flex-1 p-6 overflow-auto space-y-5">
+
+          {/* Summary pills — clickable to filter */}
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(STATUS_CONFIG) as PaymentStatus[]).map(s =>
+              summary[s] ? (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(statusFilter === s ? 'all' : s)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${STATUS_CONFIG[s].color} ${statusFilter === s ? 'ring-2 ring-offset-1 ring-current opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                >
+                  {STATUS_CONFIG[s].icon}{summary[s]} {STATUS_CONFIG[s].label}
+                </button>
+              ) : null
+            )}
+            {statusFilter !== 'all' && (
+              <button onClick={() => setStatusFilter('all')} className="text-xs text-gray-400 hover:text-gray-600 underline">
+                Clear filter
+              </button>
+            )}
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-4 mb-6">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Meetup</label>
-              <select
-                value={meetupFilter}
-                onChange={e => setMeetupFilter(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2 bg-white"
-              >
-                <option value="all">All Meetups</option>
-                {uniqueMeetups.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.title} ({new Date(m.meetup_date!).toLocaleDateString()})
-                  </option>
-                ))}
-              </select>
+          {/* Search + filters */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search name, email, notes..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#3a4095] focus:border-transparent outline-none text-sm"
+              />
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Status</label>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2 bg-white"
-              >
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="submitted">Submitted</option>
-                <option value="verified">Verified</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
+            <select value={meetupFilter} onChange={e => setMeetupFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-[#3a4095] outline-none text-sm">
+              <option value="all">All Meetups</option>
+              {uniqueMeetups.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.title}{m.meetup_date ? ` (${new Date(m.meetup_date).toLocaleDateString()})` : ''}
+                </option>
+              ))}
+            </select>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-[#3a4095] outline-none text-sm">
+              <option value="all">All Statuses</option>
+              {(Object.keys(STATUS_CONFIG) as PaymentStatus[]).map(s => (
+                <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+              ))}
+            </select>
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl shadow border overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name & Contact</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Meetup</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Why Join</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    {['Name & Contact', 'Meetup', 'Status', 'Slots', 'Notes', 'Registered'].map(h => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-100">
                   {filtered.map(r => {
-                    const badge = getStatusBadge(r.payment_status)
+                    const meetupId = r.meetup?.id
+                    const slots = meetupId !== undefined ? slotCounts[meetupId] ?? null : null
+
                     return (
-                      <tr
-                        key={r.id}
-                        className="hover:bg-indigo-50/40 cursor-pointer transition-colors"
-                        onClick={() => setSelectedReg(r)}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="font-medium">{r.full_name || '—'}</div>
+                      <tr key={r.id} className="hover:bg-indigo-50/30 cursor-pointer transition-colors" onClick={() => setSelectedReg(r)}>
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-gray-900">{r.full_name || '—'}</div>
                           <div className="text-sm text-gray-500">{r.email}</div>
-                          {r.phone && <div className="text-sm text-gray-500">{r.phone}</div>}
+                          {r.phone && <div className="text-xs text-gray-400">{r.phone}</div>}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-4">
                           <div className="text-sm font-medium text-gray-800">{r.meetup?.title || '—'}</div>
-                          <div className="text-sm text-gray-500">
-                            {r.meetup?.meetup_date ? new Date(r.meetup.meetup_date).toLocaleDateString() : '—'}
+                          <div className="text-xs text-gray-400">
+                            {r.meetup?.meetup_date
+                              ? (() => { const [y,m,d] = r.meetup.meetup_date.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) })()
+                              : '—'}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
-                          <p className="truncate max-w-[200px]">{r.why_join || '—'}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          {r.meetup?.payment_required ? (
-                            r.payment_screenshot_url ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
-                                <ImageIcon className="h-3 w-3" /> Screenshot
+                        <td className="px-5 py-4"><StatusBadge status={r.payment_status} /></td>
+                        <td className="px-5 py-4">
+                          {slots !== null
+                            ? <span className={`text-xs font-medium ${slots <= 0 ? 'text-red-500' : slots <= 3 ? 'text-orange-500' : 'text-green-600'}`}>
+                                {slots <= 0 ? 'Full' : `${slots} left`}
                               </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">No screenshot</span>
-                            )
-                          ) : (
-                            <span className="text-xs text-gray-400">Free</span>
-                          )}
+                            : <span className="text-xs text-gray-400">Open</span>
+                          }
                         </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge.color}`}>
-                            {badge.label}
-                          </span>
+                        <td className="px-5 py-4 max-w-[180px]">
+                          {r.admin_notes
+                            ? <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full truncate block border border-amber-200">📝 {r.admin_notes}</span>
+                            : <span className="text-xs text-gray-300">—</span>
+                          }
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(r.created_at).toLocaleString('en-US', {
-                            dateStyle: 'medium', timeStyle: 'short',
-                          })}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={e => e.stopPropagation()}>
-                          {r.payment_status === 'pending' || r.payment_status === 'submitted' ? (
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => handleStatusChange(r.id, 'verified')}
-                                disabled={statusChanging}
-                                className="text-green-600 hover:text-green-900 disabled:opacity-40"
-                                title="Verify"
-                              >
-                                <CheckCircle className="h-5 w-5" />
-                              </button>
-                              <button
-                                onClick={() => handleStatusChange(r.id, 'rejected')}
-                                disabled={statusChanging}
-                                className="text-red-600 hover:text-red-900 disabled:opacity-40"
-                                title="Reject"
-                              >
-                                <XCircle className="h-5 w-5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
+                        <td className="px-5 py-4 text-xs text-gray-400 whitespace-nowrap">
+                          {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                       </tr>
                     )
@@ -566,7 +653,8 @@ export default function RegistrationsDashboard() {
 
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                      <td colSpan={6} className="px-6 py-14 text-center text-gray-400">
+                        <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
                         No registrations found
                       </td>
                     </tr>
@@ -574,10 +662,9 @@ export default function RegistrationsDashboard() {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="mt-4 text-sm text-gray-500">
-            Showing {filtered.length} of {registrations.length} registrations
+            <div className="px-5 py-3 bg-gray-50 border-t text-xs text-gray-500">
+              Showing {filtered.length} of {registrations.length} registrations
+            </div>
           </div>
         </main>
       </div>
@@ -587,8 +674,9 @@ export default function RegistrationsDashboard() {
         <DetailPanel
           registration={selectedReg}
           onClose={() => setSelectedReg(null)}
-          onStatusChange={handleStatusChange}
-          statusChanging={statusChanging}
+          onAction={handleAction}
+          acting={acting}
+          slotsLeft={selectedReg.meetup?.id ? slotCounts[selectedReg.meetup.id] ?? null : null}
         />
       )}
     </div>
