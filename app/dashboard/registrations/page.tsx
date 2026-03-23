@@ -35,6 +35,7 @@ type Registration = {
     location: string | null
     payment_required: boolean | null
     max_slots: number | null
+    status: string | null
   } | null
 }
 
@@ -377,13 +378,18 @@ export default function RegistrationsDashboard() {
           payment_status, payment_screenshot_url,
           admin_notes, status_updated_at, created_at,
           meetup:meetups!meetup_id (
-            id, title, meetup_date, location, payment_required, max_slots
+            id, title, meetup_date, location, payment_required, max_slots, status
           )
         `)
+        .eq('meetup.status', 'upcoming')
         .order('created_at', { ascending: false })
 
       if (error) { console.error(error); setLoading(false); return }
-      const regs = (data as unknown as Registration[]) || []
+
+      // Filter out any registrations where the meetup join returned null
+      // (Supabase returns null for the relation if the .eq filter on the join doesn't match)
+      const regs = ((data as unknown as Registration[]) || []).filter(r => r.meetup !== null)
+
       setRegistrations(regs)
       await refreshSlots(regs)
       setLoading(false)

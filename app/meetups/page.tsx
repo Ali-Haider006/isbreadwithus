@@ -7,25 +7,25 @@ export default async function MeetupsPage() {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
 
-  const { data: meetups } = await supabase
+    const { data: meetups } = await supabase
     .from('meetups')
-    .select('*, book:books!book_id(id, title, author, cover_image_url)')
+    .select(`
+      *,
+      book:books!book_id(id, title, author, cover_image_url),
+      meetup_registrations(count)
+    `)
     .eq('status', 'upcoming')
     .gte('meetup_date', new Date().toISOString().split('T')[0])
+    .neq('meetup_registrations.payment_status', 'rejected')
     .order('meetup_date', { ascending: true })
 
-  // Fetch registration counts for all meetups in parallel
-  const meetupsWithCounts = await Promise.all(
-    (meetups ?? []).map(async (meetup) => {
-      if (!meetup.max_slots) return { ...meetup, slotsLeft: null }
-      const { count } = await supabase
-        .from('meetup_registrations')
-        .select('*', { count: 'exact', head: true })
-        .eq('meetup_id', meetup.id)
-        .neq('payment_status', 'rejected')
-      return { ...meetup, slotsLeft: meetup.max_slots - (count ?? 0) }
-    })
-  )
+  const meetupsWithCounts = (meetups ?? []).map((meetup) => {
+    const registrationCount = meetup.meetup_registrations?.[0]?.count ?? 0
+    const slotsLeft = meetup.max_slots != null
+      ? meetup.max_slots - registrationCount
+      : null
+    return { ...meetup, slotsLeft }
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
