@@ -1,17 +1,84 @@
 // app/api/registration-email/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
+import { createClient } from '@supabase/supabase-js'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// ── Rate limiter: 5 requests per IP per hour ──────────────────────────────────
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(5, '1 h'),
+  analytics: false,
+})
+
+// ── Supabase admin client (service role — only for server-side verification) ──
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(req: NextRequest) {
   try {
-    const { full_name, email, meetup_title, meetup_date, meetup_time, location, payment_required, payment_amount } = await req.json()
+    // ── 1. Rate limit by IP ─────────────────────────────────────────────────
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      req.headers.get('x-real-ip') ??
+      'anonymous'
+
+    const { success: allowed, limit, remaining, reset } = await ratelimit.limit(ip)
+
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit':     String(limit),
+            'X-RateLimit-Remaining': String(remaining),
+            'X-RateLimit-Reset':     String(reset),
+            'Retry-After':           String(Math.ceil((reset - Date.now()) / 1000)),
+          },
+        }
+      )
+    }
+
+    // ── 2. Parse & basic validate body ─────────────────────────────────────
+    const body = await req.json()
+    const { full_name, email, meetup_title, meetup_date, meetup_time, location, payment_required, payment_amount } = body
 
     if (!email || !full_name || !meetup_title) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Basic email shape check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
+    }
+
+    // ── 3. Verify a real registration exists for this email ─────────────────
+    // This is the critical guard — a spammer cannot send arbitrary emails
+    // because they can't create valid DB rows without going through the
+    // registration flow (which has its own duplicate + slot checks).
+    const { data: registration, error: dbError } = await supabaseAdmin
+      .from('meetup_registrations')
+      .select('id')
+      .eq('email', email.trim())
+      .not('payment_status', 'eq', 'rejected')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (dbError || !registration) {
+      // Return 200 to avoid leaking whether an email is registered or not,
+      // but don't actually send anything.
+      console.warn(`Registration email blocked — no valid registration found for ${email}`)
+      return NextResponse.json({ success: true })
+    }
+
+    // ── 4. Format date / time ───────────────────────────────────────────────
     const formattedDate = meetup_date
       ? new Date(meetup_date).toLocaleDateString('en-US', {
           weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -26,6 +93,7 @@ export async function POST(req: NextRequest) {
         })()
       : ''
 
+    // ── 5. Send email ───────────────────────────────────────────────────────
     await resend.emails.send({
       from: 'IsbReadWithUs <noreply@isbreadwithus.com>',
       to: [email],
@@ -78,7 +146,7 @@ export async function POST(req: NextRequest) {
                                 <tr>
                                   <td style="padding:6px 0;color:#6b7280;font-size:14px;">💳</td>
                                   <td style="padding:6px 0;color:#374151;font-size:14px;">
-                                    ${payment_required ? `PKR ${payment_amount || 0} ` : 'Free entry'}
+                                    ${payment_required ? `PKR ${payment_amount || 0}` : 'Free entry'}
                                   </td>
                                 </tr>
                               </table>
